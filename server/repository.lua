@@ -1,25 +1,5 @@
 MZBankRepository = {}
 
-function MZBankRepository.prepare()
-  MySQL.query.await([[
-    CREATE TABLE IF NOT EXISTS mz_bank_cards (
-      id BIGINT AUTO_INCREMENT PRIMARY KEY,
-      card_uid VARCHAR(64) NOT NULL,
-      citizenid VARCHAR(64) NOT NULL,
-      last4 CHAR(4) NOT NULL,
-      status VARCHAR(16) NOT NULL DEFAULT 'active',
-      pin_hash VARCHAR(255) NULL,
-      issued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      blocked_at TIMESTAMP NULL,
-      metadata_json LONGTEXT NULL,
-      UNIQUE KEY uq_mz_bank_cards_uid (card_uid),
-      KEY idx_mz_bank_cards_owner_status (citizenid, status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-  ]])
-  return true
-end
-
 function MZBankRepository.getCard(cardUid)
   return MySQL.single.await([[
     SELECT id, card_uid, citizenid, last4, status, issued_at, updated_at, blocked_at
@@ -84,4 +64,49 @@ function MZBankRepository.revokeCard(cardUid)
     SET status = 'revoked', blocked_at = CURRENT_TIMESTAMP
     WHERE card_uid = ? AND status = 'active'
   ]], { cardUid })
+end
+
+function MZBankRepository.insertLegacyReport(report)
+  local id = MySQL.insert.await([[
+    INSERT INTO mz_bank_legacy_reports (
+      report_uid, status, actor, environment, backup_ref, authorization_ref,
+      strategy, snapshot_fingerprint, preview_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ]], {
+    report.reportUid, report.status, report.actor, report.environment,
+    report.backupRef, report.authorizationRef, report.strategy,
+    report.snapshotFingerprint, report.previewJson
+  })
+  return id ~= nil and tonumber(id) ~= 0
+end
+
+function MZBankRepository.getLegacyReport(reportUid)
+  return MySQL.single.await([[
+    SELECT report_uid, status, actor, environment, backup_ref, authorization_ref,
+           strategy, snapshot_fingerprint, preview_json, affected_rows,
+           error_code, created_at, applied_at,
+           TIMESTAMPDIFF(SECOND, created_at, CURRENT_TIMESTAMP) AS age_seconds
+    FROM mz_bank_legacy_reports
+    WHERE report_uid = ?
+    LIMIT 1
+  ]], { reportUid })
+end
+
+function MZBankRepository.finishLegacyReport(reportUid, statusValue, affectedRows, errorCode)
+  local affected = MySQL.update.await([[
+    UPDATE mz_bank_legacy_reports
+    SET status = ?, affected_rows = ?, error_code = ?,
+        applied_at = CASE WHEN ? = 'applied' THEN CURRENT_TIMESTAMP ELSE applied_at END
+    WHERE report_uid = ? AND status IN ('preview_ready', 'applying')
+  ]], { statusValue, affectedRows, errorCode, statusValue, reportUid })
+  return tonumber(affected) == 1
+end
+
+function MZBankRepository.claimLegacyReport(reportUid)
+  local affected = MySQL.update.await([[
+    UPDATE mz_bank_legacy_reports
+    SET status = 'applying'
+    WHERE report_uid = ? AND status = 'preview_ready'
+  ]], { reportUid })
+  return tonumber(affected) == 1
 end

@@ -5,15 +5,31 @@ const REQUEST_TIMEOUT_MS = 10000;
 const app = document.getElementById('app');
 const views = document.querySelectorAll('.view');
 
+function loadPendingOperations() {
+    try {
+        const stored = JSON.parse(window.sessionStorage.getItem('mz_bank_pending_operations') || '{}');
+        return stored && typeof stored === 'object' ? stored : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function savePendingOperations(pendingOperations) {
+    try {
+        window.sessionStorage.setItem('mz_bank_pending_operations', JSON.stringify(pendingOperations || {}));
+    } catch (_) { /* persistence is best effort; server-side idempotency remains authoritative */ }
+}
+
 const state = {
     view: 'welcome',
     data: { balance: 0, cash: 0, name: '-', account: '-', statement: [] },
     amounts: { withdraw: '', deposit: '', transfer: '' },
     focus: 'amount',
     busy: false,
-    currencySymbol: '$',
+    currencySymbol: 'R$',
     channel: 'atm',
     cardInserted: false,
+    pendingOperations: loadPendingOperations(),
 };
 
 let audioCtx = null;
@@ -137,8 +153,10 @@ function show(viewName) {
     beep(520, 40);
 }
 
-function formatMoney(value) {
-    return state.currencySymbol + Number(value || 0).toLocaleString('pt-BR');
+function formatMoney(value, showPositive = false) {
+    const amount = Number(value || 0);
+    const sign = amount < 0 ? '-' : (showPositive && amount > 0 ? '+' : '');
+    return `${sign}${state.currencySymbol}${Math.abs(amount).toLocaleString('pt-BR')}`;
 }
 
 function renderMenu() {
@@ -170,7 +188,6 @@ function renderStatement() {
         atm_deposit: 'Deposito', branch_deposit: 'Deposito',
         atm_transfer: 'Transferencia enviada', branch_transfer: 'Transferencia enviada',
         atm_transfer_received: 'Transferencia recebida', branch_transfer_received: 'Transferencia recebida',
-        phone_transfer: 'Transferencia enviada',
     };
     items.forEach((transaction) => {
         const item = document.createElement('li');
@@ -186,7 +203,7 @@ function renderStatement() {
         descriptionContainer.append(descriptionText, dateText);
         const amountText = document.createElement('span');
         amountText.className = `st-amount ${positive ? 'pos' : 'neg'}`;
-        amountText.textContent = `${positive ? '+' : ''}${formatMoney(transaction.amount)}`;
+        amountText.textContent = formatMoney(transaction.amount, true);
         item.append(descriptionContainer, amountText);
         list.appendChild(item);
     });
@@ -310,6 +327,30 @@ async function enterCard() {
     }
 }
 
+function createIdempotencyKey() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+    }
+    const bytes = new Uint8Array(16);
+    if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+        window.crypto.getRandomValues(bytes);
+    } else {
+        for (let index = 0; index < bytes.length; index += 1) {
+            bytes[index] = Math.floor(Math.random() * 256);
+        }
+    }
+    const random = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+    return `mzbank_${Date.now().toString(36)}_${random}`;
+}
+
+function operationFingerprint(kind, payload) {
+    return JSON.stringify([
+        kind,
+        payload.amount,
+        kind === 'transfer' ? String(payload.recipientValue || '') : '',
+    ]);
+}
+
 async function confirmAction(kind) {
     if (state.busy) return;
     const amount = parseInt(state.amounts[kind] || '0', 10);
@@ -319,10 +360,21 @@ async function confirmAction(kind) {
         payload.recipientValue = document.getElementById('transfer-target').value;
         if (!payload.recipientValue) return toast('Informe o ID de destino', 'error');
     }
+    const fingerprint = operationFingerprint(kind, payload);
+    const pending = state.pendingOperations[kind];
+    if (!pending || pending.fingerprint !== fingerprint) {
+        state.pendingOperations[kind] = { fingerprint, key: createIdempotencyKey() };
+        savePendingOperations(state.pendingOperations);
+    }
+    payload.idempotencyKey = state.pendingOperations[kind].key;
 
     processing(true);
     try {
         const result = await nui(kind, payload);
+        if (result && (result.ok === true || result.error === 'idempotency_conflict' || result.error === 'invalid_idempotency_key')) {
+            delete state.pendingOperations[kind];
+            savePendingOperations(state.pendingOperations);
+        }
         applyResponse(result, result && result.ok === true);
     } finally {
         processing(false);
@@ -340,7 +392,7 @@ function toast(message, type = 'info') {
 }
 
 function setCurrency(symbol) {
-    state.currencySymbol = String(symbol || '$');
+    state.currencySymbol = String(symbol || 'R$');
     document.querySelectorAll('.currency-symbol').forEach((element) => { element.textContent = state.currencySymbol; });
     renderSoftKeys(state.view);
 }
@@ -350,7 +402,7 @@ function openApp(message) {
     document.getElementById('brand-name').textContent = message.bankName || 'Banco Central';
     state.channel = message.channel || 'atm';
     state.cardInserted = message.authenticated === true;
-    setCurrency(message.currencySymbol || '$');
+    setCurrency(message.currencySymbol || 'R$');
     if (message.data) applyData(message.data);
     setCardState(state.cardInserted ? 'inserted' : 'waiting');
     show(message.authenticated === true && message.data ? 'menu' : 'welcome');
@@ -391,6 +443,10 @@ window.addEventListener('message', (event) => {
     if (message.action === 'open') openApp(message);
     else if (message.action === 'close') closeApp();
     else if (message.action === 'update') applyData(message.data || {});
+    else if (message.action === 'cardRejected') {
+        state.cardInserted = false;
+        setCardState('error');
+    }
 });
 
 document.addEventListener('keydown', (event) => {
@@ -426,7 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('transfer-target').addEventListener('click', () => setFocus('target'));
     document.getElementById('card-slot').addEventListener('click', () => enterCard());
-    if (IS_BROWSER) openApp({ bankName: 'Banco Central', currencySymbol: '$', channel: 'atm' });
+    if (IS_BROWSER) openApp({ bankName: 'Banco Central', currencySymbol: 'R$', channel: 'atm' });
 });
 
 async function mockNui(callback, body) {
@@ -434,7 +490,7 @@ async function mockNui(callback, body) {
         balance: 12500,
         cash: 800,
         name: 'Joao Silva',
-        account: 'MZ1***3456',
+        account: 'Conta corrente',
         statement: [
             { type: 'atm_deposit', amount: 500, created_at: Date.now() - 3600000 },
             { type: 'atm_withdraw', amount: -200, created_at: Date.now() - 7200000 },

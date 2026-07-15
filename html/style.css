@@ -301,7 +301,30 @@ html, body {
 .text-input.focus-field { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245,182,66,0.25); }
 
 /* extrato */
-.statement-list { list-style: none; flex: 1; overflow-y: auto; margin-top: 4px; }
+.statement-list {
+    list-style: none;
+    flex: 1;
+    overflow-y: auto;
+    margin-top: 4px;
+    padding-right: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--brand-dim) rgba(4, 18, 15, 0.72);
+}
+.statement-list::-webkit-scrollbar { width: 7px; }
+.statement-list::-webkit-scrollbar-track {
+    background: rgba(4, 18, 15, 0.72);
+    border: 1px solid rgba(45, 212, 191, 0.12);
+    border-radius: 999px;
+}
+.statement-list::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--brand), var(--brand-dim));
+    border: 1px solid var(--lcd-bg);
+    border-radius: 999px;
+    box-shadow: 0 0 6px rgba(45, 212, 191, 0.28);
+}
+.statement-list::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--amber), var(--brand));
+}
 .statement-list li {
     display: flex; justify-content: space-between; align-items: center;
     padding: 9px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12px;

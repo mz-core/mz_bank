@@ -2,10 +2,9 @@ MZBankService = {}
 
 local Sessions = {}
 local RateLimits = {}
-local PhoneBusy = {}
 local ready = false
 local COORDINATE_GRACE_MS = 3000
-local INITIAL_POSITION_GRACE_MS = 2000
+local OPEN_STATE_RETRY_MS = 250
 
 local function serverValidationDistance()
   return math.max(
@@ -16,8 +15,7 @@ end
 
 local CHANNEL_PERMISSIONS = {
   atm = { overview = true, statement = true, withdraw = true, deposit = true, transfer = true },
-  branch = { overview = true, statement = true, withdraw = true, deposit = true, transfer = true, cards = true },
-  phone = { overview = true, statement = true, transfer = true, cards = true }
+  branch = { overview = true, statement = true, withdraw = true, deposit = true, transfer = true, cards = true }
 }
 
 local function messageFor(errorCode)
@@ -54,12 +52,58 @@ local function distance(left, right)
   return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
-local function getServerPlayerCoords(source)
-  local ped = GetPlayerPed(source)
-  if not ped or ped <= 0 then return nil end
-  local coords = GetEntityCoords(ped)
-  if not coords then return nil end
-  return { x = coords.x, y = coords.y, z = coords.z }
+local function getServerPlayerState(source)
+  local pedOk, ped = pcall(GetPlayerPed, tostring(source))
+  if not pedOk then return nil, 'invalid_ped', 'get_player_ped_failed' end
+  if not ped or ped <= 0 then return nil, 'invalid_ped', 'ped_missing' end
+
+  local coordsOk, coords = pcall(GetEntityCoords, ped)
+  if not coordsOk then return nil, 'invalid_ped', 'get_entity_coords_failed' end
+  if not coords or tonumber(coords.x) == nil or tonumber(coords.y) == nil or tonumber(coords.z) == nil then
+    return nil, 'invalid_ped', 'coords_missing'
+  end
+
+  local healthOk, health = pcall(GetEntityHealth, ped)
+  if not healthOk then return nil, 'invalid_ped', 'get_entity_health_failed' end
+  health = tonumber(health)
+  if not health then return nil, 'invalid_ped', 'health_missing' end
+  if health <= 0 then return nil, 'player_dead', 'health_zero' end
+
+  local vehicleOk, vehicle = pcall(GetVehiclePedIsIn, ped, false)
+  if not vehicleOk then return nil, 'invalid_ped', 'get_vehicle_ped_is_in_failed' end
+  vehicle = tonumber(vehicle)
+  if vehicle == nil then return nil, 'invalid_ped', 'vehicle_state_missing' end
+  if vehicle ~= 0 then return nil, 'vehicle_forbidden', 'player_in_vehicle' end
+
+  return {
+    ped = ped,
+    coords = { x = coords.x, y = coords.y, z = coords.z }
+  }
+end
+
+local function getOpeningPlayerState(source)
+  local attempts = math.max(1, math.floor(COORDINATE_GRACE_MS / OPEN_STATE_RETRY_MS) + 1)
+  local state, stateErr, stateDetail
+  for attempt = 1, attempts do
+    state, stateErr, stateDetail = getServerPlayerState(source)
+    if state or stateErr ~= 'invalid_ped' then return state, stateErr, stateDetail end
+    if attempt < attempts then Wait(OPEN_STATE_RETRY_MS) end
+  end
+  return nil, stateErr or 'invalid_ped', stateDetail or 'unknown'
+end
+
+local function resolveKnownAtm(requestedCoords)
+  local tolerance = math.max(0.1, tonumber(Config.ATM.catalogMatchDistance) or 2.25)
+  for index, entry in ipairs(Config.ATM.catalog or {}) do
+    local knownCoords = cloneCoords(type(entry) == 'table' and entry.coords or entry)
+    if knownCoords and distance(requestedCoords, knownCoords) <= tolerance then
+      return {
+        id = type(entry) == 'table' and entry.id or index,
+        coords = knownCoords
+      }
+    end
+  end
+  return nil
 end
 
 local function rateLimited(source, key, cooldownMs)
@@ -71,8 +115,42 @@ local function rateLimited(source, key, cooldownMs)
   return false
 end
 
-local function createToken(source, citizenid)
-  return ('mzb:%s:%s:%s:%08d'):format(source, citizenid, os.time(), math.random(0, 99999999))
+local function operationRateLimited(source, idempotencyKey, cooldownMs)
+  local now = GetGameTimer()
+  RateLimits[source] = RateLimits[source] or {}
+  local state = RateLimits[source].operation
+  if type(state) == 'table' and state.idempotencyKey == idempotencyKey then
+    return false
+  end
+  local nextAllowed = type(state) == 'table' and tonumber(state.nextAllowed) or 0
+  if now < nextAllowed then return true end
+  RateLimits[source].operation = {
+    nextAllowed = now + math.max(0, tonumber(cooldownMs) or 0),
+    idempotencyKey = idempotencyKey
+  }
+  return false
+end
+
+local TOKEN_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+local function tokenExists(candidate)
+  for _, session in pairs(Sessions) do
+    if session.token == candidate then return true end
+  end
+  return false
+end
+
+local function createToken()
+  for _ = 1, 10 do
+    local buffer = {}
+    for index = 1, 48 do
+      local offset = math.random(1, #TOKEN_ALPHABET)
+      buffer[index] = TOKEN_ALPHABET:sub(offset, offset)
+    end
+    local candidate = table.concat(buffer)
+    if not tokenExists(candidate) then return candidate end
+  end
+  error('unable to allocate unique bank session token')
 end
 
 local function requiresCard(channel)
@@ -86,8 +164,11 @@ local function resolvePhysicalContext(source, payload)
   payload = type(payload) == 'table' and payload or {}
   local channel = tostring(payload.channel or ''):lower()
   local requestedCoords = cloneCoords(payload.coords)
-  local playerCoords = getServerPlayerCoords(source)
-  if not requestedCoords or not playerCoords then return nil, 'too_far' end
+  if not requestedCoords then return nil, channel == 'atm' and 'atm_invalid' or 'too_far' end
+
+  local playerState, stateErr, stateDetail = getOpeningPlayerState(source)
+  if not playerState then return nil, stateErr, stateDetail end
+  local playerCoords = playerState.coords
 
   if channel == 'branch' then
     local matched
@@ -110,14 +191,24 @@ local function resolvePhysicalContext(source, payload)
   end
 
   if channel == 'atm' then
-    if distance(playerCoords, requestedCoords) > serverValidationDistance() then return nil, 'too_far' end
-    return { channel = channel, coords = requestedCoords, verifiedPlayerCoords = playerCoords }
+    local knownAtm = resolveKnownAtm(requestedCoords)
+    if not knownAtm then return nil, 'atm_invalid' end
+    if distance(playerCoords, knownAtm.coords) > serverValidationDistance() then return nil, 'too_far' end
+    return {
+      channel = channel,
+      coords = knownAtm.coords,
+      atmId = knownAtm.id,
+      verifiedPlayerCoords = playerCoords
+    }
   end
 
   return nil, 'channel_forbidden'
 end
 
+local findInventoryCard
+
 local function validateSession(source, token, requireAuthentication)
+  if not ready then return nil, 'bank_unavailable' end
   local session = Sessions[source]
   if not session or tostring(token or '') == '' or session.token ~= token then
     MZBankBridge.Log('bank.session.invalid', source, { error = 'invalid_session' })
@@ -140,12 +231,26 @@ local function validateSession(source, token, requireAuthentication)
     Sessions[source] = nil
     return nil, 'player_not_loaded'
   end
-  local sessionAgeMs = GetGameTimer() - (tonumber(session.openedAtMs) or 0)
-  local playerCoords = sessionAgeMs >= INITIAL_POSITION_GRACE_MS and getServerPlayerCoords(source) or nil
-  if sessionAgeMs < INITIAL_POSITION_GRACE_MS then
-    -- A posicao ja foi validada ao criar a sessao. Evita uma leitura divergente
-    -- do ped imediatamente no callback automatico que carrega a agencia.
-  elseif playerCoords then
+  local playerState, stateErr, stateDetail = getServerPlayerState(source)
+  if not playerState then
+    local elapsed = GetGameTimer() - (tonumber(session.lastCoordCheckAt) or 0)
+    if stateErr ~= 'invalid_ped' or elapsed > COORDINATE_GRACE_MS then
+      Sessions[source] = nil
+      MZBankBridge.Log('bank.session.physical_state_denied', source, {
+        channel = session.channel,
+        error = stateErr or 'invalid_ped',
+        detail = stateDetail,
+        elapsed_ms = elapsed
+      })
+      return nil, stateErr or 'invalid_ped'
+    end
+    if Config.Debug then
+      print(('[mz_bank] physical state check deferred source=%s channel=%s elapsed_ms=%s'):format(
+        tostring(source), tostring(session.channel), tostring(elapsed)
+      ))
+    end
+  else
+    local playerCoords = playerState.coords
     local currentDistance = distance(playerCoords, session.coords)
     session.lastVerifiedCoords = playerCoords
     session.lastCoordCheckAt = GetGameTimer()
@@ -165,36 +270,24 @@ local function validateSession(source, token, requireAuthentication)
       })
       return nil, 'too_far'
     end
-  else
-    local elapsed = GetGameTimer() - (tonumber(session.lastCoordCheckAt) or 0)
-    if elapsed > COORDINATE_GRACE_MS then
-      print(('[mz_bank] session coordinate unavailable source=%s channel=%s elapsed_ms=%s'):format(
-        tostring(source),
-        tostring(session.channel),
-        tostring(elapsed)
-      ))
-      Sessions[source] = nil
-      return nil, 'too_far'
-    end
-    if Config.Debug then
-      print(('[mz_bank] coordinate check deferred source=%s channel=%s elapsed_ms=%s reason=server_ped_unavailable'):format(
-        tostring(source),
-        tostring(session.channel),
-        tostring(elapsed)
-      ))
-    end
   end
   if requireAuthentication ~= false and session.authenticated ~= true then
     return nil, 'card_required'
   end
+  if requireAuthentication ~= false and requiresCard(session.channel) then
+    local card, cardErr = findInventoryCard(source, session.citizenid, session.cardUid)
+    if not card then
+      Sessions[source] = nil
+      MZBankBridge.Log('bank.card.session_invalidated', source, {
+        channel = session.channel,
+        card_uid = session.cardUid,
+        error = cardErr or 'card_invalid'
+      })
+      return nil, cardErr or 'card_invalid'
+    end
+  end
   session.expiresAt = os.time() + Config.SessionTimeoutSeconds
   return session
-end
-
-local function accountMask(citizenid)
-  citizenid = tostring(citizenid or '')
-  if #citizenid <= 7 then return citizenid end
-  return citizenid:sub(1, 3) .. '***' .. citizenid:sub(-4)
 end
 
 local function normalizeStatement(payload)
@@ -204,7 +297,6 @@ local function normalizeStatement(payload)
     local amount = math.floor(tonumber(row.amount) or 0)
     if tostring(row.direction) == 'out' then amount = -math.abs(amount) end
     statement[#statement + 1] = {
-      id = row.transaction_id or row.id,
       type = row.reason or row.category or row.direction,
       description = row.reason or row.category,
       amount = amount,
@@ -215,21 +307,23 @@ local function normalizeStatement(payload)
   return statement
 end
 
-local function findInventoryCard(source, citizenid)
+findInventoryCard = function(source, citizenid, expectedCardUid)
   local rows, inventoryErr = MZBankBridge.GetPlayerInventory(source)
   if not rows then return nil, inventoryErr or 'card_not_found' end
 
+  expectedCardUid = tostring(expectedCardUid or '')
   local ownerMismatch = false
   local statusError
   for _, row in ipairs(rows) do
     if row.item == Config.Card.ItemName then
       local metadata = type(row.metadata) == 'table' and row.metadata or {}
+      local cardUidValue = tostring(metadata.cardUid or '')
+      local matchesExpected = expectedCardUid == '' or cardUidValue == expectedCardUid
       local owner = tostring(metadata.ownerCitizenId or metadata.owner or '')
-      if owner ~= citizenid then
+      if matchesExpected and owner ~= citizenid then
         ownerMismatch = true
-      else
-        local cardUid = tostring(metadata.cardUid or '')
-        local credential = cardUid ~= '' and MZBankRepository.getCard(cardUid) or nil
+      elseif matchesExpected then
+        local credential = cardUidValue ~= '' and MZBankRepository.getCard(cardUidValue) or nil
         if not credential then
           statusError = 'card_invalid'
         elseif tostring(credential.citizenid) ~= citizenid then
@@ -251,6 +345,27 @@ end
 
 local function cardUid()
   return ('MZCARD-%s-%08d'):format(os.time(), math.random(0, 99999999))
+end
+
+local function invalidateCardSessions(citizenid, cardUidValue, keepCardUid)
+  citizenid = tostring(citizenid or '')
+  cardUidValue = tostring(cardUidValue or '')
+  keepCardUid = tostring(keepCardUid or '')
+
+  for sessionSource, session in pairs(Sessions) do
+    local sessionCardUid = tostring(session.cardUid or '')
+    local sameOwner = tostring(session.citizenid or '') == citizenid
+    local matchesBlocked = cardUidValue ~= '' and sessionCardUid == cardUidValue
+    local replaced = keepCardUid ~= '' and sessionCardUid ~= '' and sessionCardUid ~= keepCardUid
+    if sameOwner and (matchesBlocked or replaced) then
+      Sessions[sessionSource] = nil
+      MZBankBridge.Log('bank.card.session_invalidated', sessionSource, {
+        channel = session.channel,
+        card_uid = sessionCardUid,
+        reason = matchesBlocked and 'card_blocked' or 'card_replaced'
+      })
+    end
+  end
 end
 
 local function issueCard(source, replacement, identity)
@@ -315,6 +430,7 @@ local function issueCard(source, replacement, identity)
 
   if replacement and Config.Card.InvalidatePreviousOnReplacement == true then
     MZBankRepository.revokeActiveCardsExcept(citizenid, uid)
+    invalidateCardSessions(citizenid, nil, uid)
   end
 
   MZBankBridge.Log(replacement and 'bank.card.replaced' or 'bank.card.issued', source, {
@@ -350,9 +466,18 @@ function MZBankService.OpenSession(source, payload)
     return response(false, integrationErrors[loadStateOrErr] and 'bank_unavailable' or 'player_not_loaded')
   end
 
-  local context, contextErr = resolvePhysicalContext(source, payload)
+  local context, contextErr, contextDetail = resolvePhysicalContext(source, payload)
   if not context then
-    MZBankBridge.Log('bank.session.denied', source, { channel = payload and payload.channel, error = contextErr })
+    MZBankBridge.Log('bank.session.denied', source, {
+      channel = payload and payload.channel,
+      error = contextErr,
+      detail = contextDetail
+    })
+    if contextErr == 'invalid_ped' then
+      print(('[mz_bank] session denied source=%s error=invalid_ped detail=%s'):format(
+        tostring(source), tostring(contextDetail or 'unknown')
+      ))
+    end
     return response(false, contextErr)
   end
 
@@ -364,7 +489,7 @@ function MZBankService.OpenSession(source, payload)
   end
 
   local session = {
-    token = createToken(source, identity.citizenid),
+    token = createToken(),
     citizenid = identity.citizenid,
     channel = context.channel,
     coords = context.coords,
@@ -372,6 +497,7 @@ function MZBankService.OpenSession(source, payload)
     lastCoordCheckAt = GetGameTimer(),
     openedAtMs = GetGameTimer(),
     branchIndex = context.branchIndex,
+    atmId = context.atmId,
     authenticated = not requiresCard(context.channel),
     expiresAt = os.time() + Config.SessionTimeoutSeconds,
     busy = false
@@ -412,20 +538,15 @@ function MZBankService.Authenticate(source, token)
   end
 
   session.authenticated = true
-  return MZBankService.GetAccountOverview(source, { token = token, channel = session.channel })
+  return MZBankService.GetAccountOverview(source, { token = token })
 end
 
 function MZBankService.GetAccountOverview(source, context)
   context = type(context) == 'table' and context or {}
-  local channel = tostring(context.channel or 'phone')
-  if not CHANNEL_PERMISSIONS[channel] or not CHANNEL_PERMISSIONS[channel].overview then
+  local session, sessionErr = validateSession(source, context.token, true)
+  if not session then return response(false, sessionErr) end
+  if not CHANNEL_PERMISSIONS[session.channel] or not CHANNEL_PERMISSIONS[session.channel].overview then
     return response(false, 'channel_forbidden')
-  end
-  if channel ~= 'phone' then
-    local session, sessionErr = validateSession(source, context.token, true)
-    if not session then return response(false, sessionErr) end
-  elseif not MZBankBridge.IsPlayerLoaded(source) then
-    return response(false, 'player_not_loaded')
   end
 
   local identity = MZBankBridge.ResolvePlayer(source, false)
@@ -439,30 +560,27 @@ function MZBankService.GetAccountOverview(source, context)
     balance = bank,
     cash = wallet or 0,
     name = identity.displayName,
-    account = accountMask(identity.citizenid),
+    account = 'Conta corrente',
     statement = statementOk and normalizeStatement(statementOrErr) or {},
     statementError = statementOk and false or 'statement_unavailable',
     currencySymbol = Config.CurrencySymbol
   })
 end
 
-function MZBankService.Refresh(source, token, channel)
+function MZBankService.Refresh(source, token)
   if rateLimited(source, 'data', Config.RateLimit.dataMs) then
-    MZBankBridge.Log('bank.rate_limited', source, { operation = 'overview', channel = channel })
+    MZBankBridge.Log('bank.rate_limited', source, { operation = 'overview' })
     return response(false, 'rate_limited')
   end
-  return MZBankService.GetAccountOverview(source, { token = token, channel = channel })
+  return MZBankService.GetAccountOverview(source, { token = token })
 end
 
 function MZBankService.GetStatement(source, filters, context)
   context = type(context) == 'table' and context or {}
-  local channel = tostring(context.channel or 'phone')
-  if not CHANNEL_PERMISSIONS[channel] or not CHANNEL_PERMISSIONS[channel].statement then
+  local session, sessionErr = validateSession(source, context.token, true)
+  if not session then return response(false, sessionErr) end
+  if not CHANNEL_PERMISSIONS[session.channel] or not CHANNEL_PERMISSIONS[session.channel].statement then
     return response(false, 'channel_forbidden')
-  end
-  if channel ~= 'phone' then
-    local session, sessionErr = validateSession(source, context.token, true)
-    if not session then return response(false, sessionErr) end
   end
 
   local limit = math.min(math.max(math.floor(tonumber(filters and filters.limit) or Config.StatementLimit), 1), 100)
@@ -471,34 +589,41 @@ function MZBankService.GetStatement(source, filters, context)
   return response(true, nil, { statement = normalizeStatement(payload) })
 end
 
-function MZBankService.ResolveRecipient(source, recipientType, recipientValue)
-  recipientType = tostring(recipientType or '')
+local function resolveServerIdRecipient(source, recipientValue, allowOfflineRecovery)
   recipientValue = tostring(recipientValue or '')
-  local targetSource
-
-  if recipientType == 'server_id' then
-    targetSource = tonumber(recipientValue)
-  elseif recipientType == 'citizenid' then
-    targetSource = MZBankBridge.GetSourceByCitizenId(recipientValue)
-  else
-    return response(false, 'recipient_invalid')
+  local targetSource = tonumber(recipientValue)
+  if not targetSource or targetSource <= 0 or targetSource ~= math.floor(targetSource) then
+    return nil, 'recipient_invalid'
   end
 
   local targetIdentity = targetSource and MZBankBridge.ResolvePlayer(targetSource, false) or nil
   if not targetIdentity then
-    return response(false, 'recipient_offline')
+    if allowOfflineRecovery == true then return { source = targetSource } end
+    return nil, 'recipient_offline'
   end
-  if tonumber(targetSource) == tonumber(source) then return response(false, 'self_transfer') end
+  if tonumber(targetSource) == tonumber(source) then return nil, 'self_transfer' end
 
-  return response(true, nil, {
+  return {
     source = targetSource,
     citizenid = targetIdentity.citizenid,
-    name = targetIdentity.displayName,
-    resolvedFrom = recipientType
-  })
+    name = targetIdentity.displayName
+  }
 end
 
-local function transactionMetadata(session, reason, relatedCitizenId)
+function MZBankService.ResolveRecipient(source, recipientValue, context)
+  context = type(context) == 'table' and context or {}
+  local session, sessionErr = validateSession(source, context.token, true)
+  if not session then return response(false, sessionErr) end
+  if not (CHANNEL_PERMISSIONS[session.channel] and CHANNEL_PERMISSIONS[session.channel].transfer) then
+    return response(false, 'channel_forbidden')
+  end
+
+  local resolved, resolveErr = resolveServerIdRecipient(source, recipientValue)
+  if not resolved then return response(false, resolveErr) end
+  return response(true, nil, { name = resolved.name })
+end
+
+local function transactionMetadata(session, reason, relatedCitizenId, idempotencyKey)
   local ref = ('mzbank-%s-%s-%06d'):format(os.time(), GetGameTimer(), math.random(0, 999999))
   return {
     category = session.channel == 'branch' and 'bank_branch' or (reason:find('transfer') and 'bank_transfer' or 'bank_atm'),
@@ -507,33 +632,74 @@ local function transactionMetadata(session, reason, relatedCitizenId)
     source_type = session.channel,
     related_citizenid = relatedCitizenId,
     external_ref = ref,
+    idempotency_key = idempotencyKey,
     data = { channel = session.channel, location = session.coords }
   }
 end
 
-local function validateAmount(amount)
-  amount = math.floor(tonumber(amount) or 0)
-  if amount <= 0 then return nil, 'invalid_amount' end
-  if Config.MaxTransaction > 0 and amount > Config.MaxTransaction then return nil, 'transaction_limit' end
+local MAX_SAFE_INTEGER = 9007199254740991
+
+local function validateIdempotencyKey(value)
+  if type(value) ~= 'string' or value == '' then return nil, 'idempotency_required' end
+  if #value < 16 or #value > 64 or not value:match('^[%w_-]+$') then
+    return nil, 'invalid_idempotency_key'
+  end
+  return value
+end
+
+local function operationLimit(channel, operation)
+  local channelLimits = type(Config.TransactionLimits) == 'table' and Config.TransactionLimits[channel] or nil
+  local limit = type(channelLimits) == 'table' and tonumber(channelLimits[operation]) or nil
+  if not limit or limit <= 0 or limit ~= math.floor(limit) then return nil end
+  return math.min(limit, MAX_SAFE_INTEGER)
+end
+
+local function validateAmount(amount, channel, operation)
+  if type(amount) ~= 'number'
+    or amount ~= amount
+    or amount == math.huge
+    or amount == -math.huge
+    or amount <= 0
+    or amount ~= math.floor(amount)
+    or amount > MAX_SAFE_INTEGER then
+    return nil, 'invalid_amount'
+  end
+  local limit = operationLimit(channel, operation)
+  if not limit then return nil, 'bank_unavailable' end
+  if amount > limit then return nil, 'transaction_limit' end
   return amount
+end
+
+local function calculateTransferFee(amount)
+  local percent = tonumber(Config.TransferFeePercent)
+  if not percent or percent ~= percent or percent == math.huge or percent == -math.huge or percent < 0 then
+    return nil, 'bank_unavailable'
+  end
+  if tostring(Config.TransferFeeRounding or 'floor') ~= 'floor' then return nil, 'bank_unavailable' end
+  local fee = math.floor(amount * (percent / 100))
+  if fee < 0 or fee > MAX_SAFE_INTEGER or amount + fee > MAX_SAFE_INTEGER then
+    return nil, 'transaction_limit'
+  end
+  return fee
 end
 
 local function coreTransactionError(errorCode, insufficientCode)
   if errorCode == 'not_enough_money' then return insufficientCode end
   if errorCode == 'account_busy' then return 'operation_busy' end
   if errorCode == 'database_error' then return 'database_error' end
+  if errorCode == 'amount_overflow' then return 'transaction_limit' end
   return errorCode or 'transaction_failed'
 end
 
-local function runOperation(source, token, operation, handler)
-  if rateLimited(source, 'operation', Config.RateLimit.operationMs) then
-    MZBankBridge.Log('bank.rate_limited', source, { operation = operation })
-    return response(false, 'rate_limited')
-  end
+local function runOperation(source, token, operation, idempotencyKey, handler)
   local session, sessionErr = validateSession(source, token, true)
   if not session then return response(false, sessionErr) end
   if not (CHANNEL_PERMISSIONS[session.channel] and CHANNEL_PERMISSIONS[session.channel][operation]) then
     return response(false, 'channel_forbidden')
+  end
+  if operationRateLimited(source, idempotencyKey, Config.RateLimit.operationMs) then
+    MZBankBridge.Log('bank.rate_limited', source, { operation = operation })
+    return response(false, 'rate_limited')
   end
   if session.busy then
     MZBankBridge.Log('bank.operation.busy', source, { channel = session.channel, operation = operation })
@@ -551,107 +717,157 @@ local function runOperation(source, token, operation, handler)
   return result
 end
 
-function MZBankService.Withdraw(source, token, rawAmount)
-  local amount, amountErr = validateAmount(rawAmount)
-  if not amount then return response(false, amountErr) end
-  return runOperation(source, token, 'withdraw', function(session)
-    local result = MZBankBridge.TransferBetweenOwnAccounts(source, 'bank', 'wallet', amount, transactionMetadata(session, 'withdraw'))
+local function confirmedFinancialResponse(source, token, session, operation, amount, fee, result)
+  local correlationId = tostring(result.transactionRef or result.correlationId or '')
+  if correlationId == '' then return response(false, 'transaction_failed') end
+  local data = {
+    confirmed = true,
+    operation = operation,
+    channel = session.channel,
+    amount = amount,
+    fee = fee or 0,
+    correlationId = correlationId,
+    transactionRef = correlationId,
+    replayed = result.replayed == true
+  }
+
+  if type(result.balances) == 'table' then
+    if operation == 'transfer' then
+      data.balance = tonumber(result.balances.sender)
+    else
+      data.balance = tonumber(result.balances.bank)
+      data.cash = tonumber(result.balances.wallet)
+    end
+  end
+
+  local overview = MZBankService.GetAccountOverview(source, { token = token })
+  if overview.ok == true and type(overview.data) == 'table' then
+    for key, value in pairs(overview.data) do data[key] = value end
+  else
+    data.refreshError = overview.error or 'bank_unavailable'
+  end
+
+  local out = response(true, nil, data, Config.Locale.success)
+  out.confirmed = true
+  out.correlationId = correlationId
+  out.replayed = result.replayed == true
+  return out
+end
+
+function MZBankService.Withdraw(source, token, rawAmount, rawIdempotencyKey)
+  local idempotencyKey, idempotencyErr = validateIdempotencyKey(rawIdempotencyKey)
+  if not idempotencyKey then return response(false, idempotencyErr) end
+  return runOperation(source, token, 'withdraw', idempotencyKey, function(session)
+    local amount, amountErr = validateAmount(rawAmount, session.channel, 'withdraw')
+    if not amount then return response(false, amountErr) end
+    local result = MZBankBridge.TransferBetweenOwnAccounts(
+      source,
+      'bank',
+      'wallet',
+      amount,
+      transactionMetadata(session, 'withdraw', nil, idempotencyKey)
+    )
     if result.ok ~= true then
       return response(false, coreTransactionError(result.error, 'not_enough_bank'))
     end
-    MZBankBridge.Log('bank.withdraw', source, { channel = session.channel, amount = amount, transaction_ref = result.transactionRef })
-    local overview = MZBankService.GetAccountOverview(source, { token = token, channel = session.channel })
-    overview.message = Config.Locale.success
-    return overview
+    MZBankBridge.Log(result.replayed and 'bank.withdraw.replayed' or 'bank.withdraw', source, {
+      channel = session.channel, amount = amount, transaction_ref = result.transactionRef
+    })
+    return confirmedFinancialResponse(source, token, session, 'withdraw', amount, 0, result)
   end)
 end
 
-function MZBankService.Deposit(source, token, rawAmount)
-  local amount, amountErr = validateAmount(rawAmount)
-  if not amount then return response(false, amountErr) end
-  return runOperation(source, token, 'deposit', function(session)
-    local result = MZBankBridge.TransferBetweenOwnAccounts(source, 'wallet', 'bank', amount, transactionMetadata(session, 'deposit'))
+function MZBankService.Deposit(source, token, rawAmount, rawIdempotencyKey)
+  local idempotencyKey, idempotencyErr = validateIdempotencyKey(rawIdempotencyKey)
+  if not idempotencyKey then return response(false, idempotencyErr) end
+  return runOperation(source, token, 'deposit', idempotencyKey, function(session)
+    local amount, amountErr = validateAmount(rawAmount, session.channel, 'deposit')
+    if not amount then return response(false, amountErr) end
+    local result = MZBankBridge.TransferBetweenOwnAccounts(
+      source,
+      'wallet',
+      'bank',
+      amount,
+      transactionMetadata(session, 'deposit', nil, idempotencyKey)
+    )
     if result.ok ~= true then
       return response(false, coreTransactionError(result.error, 'not_enough_wallet'))
     end
-    MZBankBridge.Log('bank.deposit', source, { channel = session.channel, amount = amount, transaction_ref = result.transactionRef })
-    local overview = MZBankService.GetAccountOverview(source, { token = token, channel = session.channel })
-    overview.message = Config.Locale.success
-    return overview
+    MZBankBridge.Log(result.replayed and 'bank.deposit.replayed' or 'bank.deposit', source, {
+      channel = session.channel, amount = amount, transaction_ref = result.transactionRef
+    })
+    return confirmedFinancialResponse(source, token, session, 'deposit', amount, 0, result)
   end)
 end
 
 function MZBankService.Transfer(source, recipient, rawAmount, context)
   context = type(context) == 'table' and context or {}
-  local amount, amountErr = validateAmount(rawAmount)
-  if not amount then return response(false, amountErr) end
+  local idempotencyKey, idempotencyErr = validateIdempotencyKey(context.idempotencyKey)
+  if not idempotencyKey then return response(false, idempotencyErr) end
+  local recipientValue = type(recipient) == 'table'
+    and (recipient.value or recipient.recipientValue or recipient.targetId)
+    or recipient
 
-  local channel = tostring(context.channel or 'phone')
-  if channel == 'phone' then
-    if rateLimited(source, 'phone_operation', Config.RateLimit.operationMs) then
-      MZBankBridge.Log('bank.rate_limited', source, { operation = 'phone_transfer', channel = 'phone' })
-      return response(false, 'rate_limited')
-    end
-    if PhoneBusy[source] then return response(false, 'operation_busy') end
-    PhoneBusy[source] = true
-
-    local resolved = MZBankService.ResolveRecipient(source, recipient.type, recipient.value)
-    if not resolved.ok then
-      PhoneBusy[source] = nil
-      return resolved
-    end
-    local fee = math.floor(amount * (Config.TransferFeePercent / 100))
-    local metadata = {
-      category = 'bank_transfer', reason = 'phone_transfer', source_resource = 'mz_bank', source_type = 'phone',
-      related_citizenid = resolved.data.citizenid, fee = fee, data = { channel = 'phone' }
-    }
-    local result = MZBankBridge.TransferBankBetweenPlayers(source, resolved.data.source, amount, metadata)
-    PhoneBusy[source] = nil
-    if result.ok ~= true then return response(false, coreTransactionError(result.error, 'not_enough_bank')) end
-    return response(true, nil, { transactionRef = result.transactionRef, fee = result.fee }, Config.Locale.success)
-  end
-
-  return runOperation(source, context.token, 'transfer', function(session)
-    local resolved = MZBankService.ResolveRecipient(source, recipient.type, recipient.value)
-    if not resolved.ok then return resolved end
-    local fee = math.floor(amount * (Config.TransferFeePercent / 100))
-    local metadata = transactionMetadata(session, 'transfer', resolved.data.citizenid)
+  return runOperation(source, context.token, 'transfer', idempotencyKey, function(session)
+    local amount, amountErr = validateAmount(rawAmount, session.channel, 'transfer')
+    if not amount then return response(false, amountErr) end
+    local resolved, resolveErr = resolveServerIdRecipient(source, recipientValue, true)
+    if not resolved then return response(false, resolveErr) end
+    local fee, feeErr = calculateTransferFee(amount)
+    if fee == nil then return response(false, feeErr) end
+    local metadata = transactionMetadata(session, 'transfer', resolved.citizenid, idempotencyKey)
     metadata.fee = fee
     metadata.recipient_reason = session.channel .. '_transfer_received'
-    local result = MZBankBridge.TransferBankBetweenPlayers(source, resolved.data.source, amount, metadata)
+    local result = MZBankBridge.TransferBankBetweenPlayers(source, resolved.source, amount, metadata)
     if result.ok ~= true then return response(false, coreTransactionError(result.error, 'not_enough_bank')) end
 
-    MZBankBridge.Notify(resolved.data.source, ('Voce recebeu %s%s de %s.'):format(Config.CurrencySymbol, amount, MZBankBridge.GetDisplayName(source)), 'success')
-    MZBankBridge.Log('bank.transfer', source, {
+    if result.replayed ~= true and resolved.citizenid then
+      MZBankBridge.Notify(resolved.source, ('Voce recebeu %s%s de %s.'):format(Config.CurrencySymbol, amount, MZBankBridge.GetDisplayName(source)), 'success')
+    end
+    MZBankBridge.Log(result.replayed and 'bank.transfer.replayed' or 'bank.transfer', source, {
       channel = session.channel, amount = amount, fee = fee,
-      related_citizenid = resolved.data.citizenid, transaction_ref = result.transactionRef
+      related_citizenid = result.targetCitizenId or resolved.citizenid, transaction_ref = result.transactionRef
     })
-    local overview = MZBankService.GetAccountOverview(source, { token = context.token, channel = session.channel })
-    overview.message = Config.Locale.success
-    return overview
+    return confirmedFinancialResponse(source, context.token, session, 'transfer', amount, fee, result)
   end)
 end
 
-function MZBankService.GetCards(source)
+local function validateBranchCardContext(source, context)
+  context = type(context) == 'table' and context or {}
+  local session, sessionErr = validateSession(source, context.token, true)
+  if not session then return nil, sessionErr end
+  if session.channel ~= 'branch'
+    or not (CHANNEL_PERMISSIONS[session.channel] and CHANNEL_PERMISSIONS[session.channel].cards) then
+    return nil, 'channel_forbidden'
+  end
+  return session
+end
+
+function MZBankService.GetCards(source, context)
+  local _, sessionErr = validateBranchCardContext(source, context)
+  if sessionErr then return response(false, sessionErr) end
   local identity = MZBankBridge.ResolvePlayer(source, false)
   if not identity then return response(false, 'player_not_loaded') end
   return response(true, nil, { cards = MZBankRepository.listCards(identity.citizenid) })
 end
 
-function MZBankService.BlockCard(source, cardUidValue)
+function MZBankService.BlockCard(source, cardUidValue, context)
+  local _, sessionErr = validateBranchCardContext(source, context)
+  if sessionErr then return response(false, sessionErr) end
   local identity = MZBankBridge.ResolvePlayer(source, false)
   if not identity then return response(false, 'player_not_loaded') end
   if not MZBankRepository.blockCard(identity.citizenid, tostring(cardUidValue or '')) then return response(false, 'card_invalid') end
+  invalidateCardSessions(identity.citizenid, cardUidValue, nil)
   MZBankBridge.Log('bank.card.blocked', source, { channel = 'branch' })
   return response(true, nil, nil, Config.Locale.card_blocked_success)
 end
 
 function MZBankService.RequestReplacementCard(source, context)
   context = type(context) == 'table' and context or {}
-  if tostring(context.channel) ~= 'branch' then return response(false, 'channel_forbidden') end
   if not context.token then return response(false, 'invalid_session') end
   local session, err = validateSession(source, context.token, true)
   if not session then return response(false, err) end
+  if session.channel ~= 'branch' then return response(false, 'channel_forbidden') end
   return issueCard(source, true)
 end
 
@@ -667,7 +883,6 @@ end
 function MZBankService.CleanupSource(source)
   Sessions[source] = nil
   RateLimits[source] = nil
-  PhoneBusy[source] = nil
 end
 
 CreateThread(function()

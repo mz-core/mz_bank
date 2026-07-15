@@ -14,15 +14,15 @@
 1. `oxmysql`
 2. `ox_lib`
 3. `mz_core`
-4. `mz_economy` (recomendado para extrato)
+4. `mz_economy` (observado/degradavel; iniciado antes para disponibilizar o extrato)
 5. `mz_inventory`
 6. `mz_bank`
 
-`mz_economy` pode ficar indisponivel sem bloquear saldo, saque, deposito ou transferencia; nesse caso, o extrato retorna `statement_unavailable`. O resource nunca volta a gravar `bank_transactions`.
+`mz_economy` e iniciado antes do banco, mas nao e dependencia rigida do commit financeiro. Ele pode ficar indisponivel sem bloquear saldo, saque, deposito ou transferencia; nesse caso, `GetReadiness` informa modo degradado e o extrato retorna `statement_unavailable`. Quando a economia volta, o bridge consulta seu estado real e o extrato e restaurado sem reiniciar o banco. O resource nunca volta a gravar `bank_transactions`.
 
 ## Configuracao
 
-Os pontos principais ficam em `config.lua`: moeda, distancias, expiracao, limite, taxa, ATMs, agencias, cartao e rate limits. `Debug` fica desativado por padrao. Nao existe saldo inicial no `mz_bank`.
+Os pontos principais ficam em `config.lua`: moeda, distancias, expiracao, limite, taxa, catalogo de ATMs, agencias, cartao e rate limits. `Debug` fica desativado por padrao. Nao existe saldo inicial no `mz_bank`. ATMs de mapas customizados precisam ser incluidos em `Config.ATM.catalog`.
 
 Com `Config.Interaction.UseMzInteract = true`, as agencias sao registradas no `mz_interact` com marcador, texto e blip na mesma coordenada. ATMs sao descobertos pelos modelos fisicos e registrados dinamicamente nas coordenadas reais dos objetos; por padrao eles possuem marcador/interacao, mas nao criam blips no mapa. Se `mz_interact` nao estiver iniciado, `FallbackMarkers` preserva a interacao manual.
 
@@ -32,14 +32,14 @@ PIN esta preparado no schema (`pin_hash` nullable), mas nao foi implementado sem
 
 ## Comportamento por canal
 
-| Operacao | ATM | Agencia | Phone futuro |
+| Operacao | ATM | Agencia | Phone (nao implementado) |
 |---|---:|---:|---:|
-| Overview/extrato | sim | sim | sim |
-| Saque/deposito fisico | sim | sim | nao |
-| Transferencia | sim | sim | sim |
-| Emissao/substituicao | nao | sim | gerenciamento futuro |
-| Exige item `bank_card` | configuravel | configuravel | nao |
+| Overview/extrato | sim | sim | — |
+| Saque/deposito fisico | sim | sim | — |
+| Transferencia | sim | sim | — |
+| Emissao/substituicao | nao | sim | — |
+| Exige item `bank_card` | configuravel | configuravel | — |
 
-O ATM atual resolve o destinatario por server ID e exige que ele esteja online. O dominio ja aceita um tipo explicito; `account_number`, `phone` e `pix_key` permanecem reservados e retornam erro em vez de fazer SQL inseguro.
+O ATM atual resolve somente destinatario por server ID e exige que ele esteja online. O callback nao aceita tipo escolhido pelo client; `citizenid`, `account_number`, `phone` e `pix_key` nao fazem parte do contrato fisico.
 
 Consulte `INTEGRATION.md`, `TEST_PLAN.md` e `LEGACY_BANK_TABLES.md` para contratos e operacao.

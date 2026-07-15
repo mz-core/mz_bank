@@ -21,8 +21,8 @@ Os testes abaixo exigem uma instancia FiveM com MySQL. Eles nao sao considerados
 9. Duplo Enter/clique e dois callbacks concorrentes: somente uma operacao deve passar; observar `operation_busy`/`rate_limited` e ausencia de saldo negativo.
 10. Falha de persistencia simulada na segunda query: a transacao SQL deve reverter e o cache nao deve mudar.
 11. Afastamento, morte, entrada em veiculo e restart: NUI fecha, focus e restaurado e token posterior falha.
-12. `mz_economy` parado: operacoes continuam no core; extrato fica indisponivel/vazio e nenhuma tabela legada recebe escrita.
-13. Contexto `phone`: overview/extrato/transferencia funcionam server-to-server; saque e deposito nao sao exportados nesse canal.
+12. `mz_economy` parado: `GetReadiness` permanece `ready = true`, informa `degraded = true`; operacoes continuam no core, extrato fica indisponivel/vazio e nenhuma tabela legada recebe escrita. Ao reiniciar `mz_economy`, o extrato volta sem restart de `mz_bank`.
+13. Contexto `phone`: callbacks e exports fisicos devem negar o acesso sem token/capability propria; nenhuma operacao financeira pode selecionar `phone` nesta fase.
 14. Segunda via: com configuracao habilitada, emitir novo item antes de revogar credenciais anteriores; falha de inventario deve manter o cartao antigo ativo.
 
 ## Concorrencia e recuperacao

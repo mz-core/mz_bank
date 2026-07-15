@@ -18,8 +18,6 @@ local function coreExport(name, ...)
       return exports['mz_core']:TransferMoneyBetweenAccounts(args[1], args[2], args[3], args[4], args[5])
     elseif name == 'TransferBankBetweenPlayers' then
       return exports['mz_core']:TransferBankBetweenPlayers(args[1], args[2], args[3], args[4])
-    elseif name == 'GetSourceByCitizenId' then
-      return exports['mz_core']:GetSourceByCitizenId(args[1])
     elseif name == 'RemoveMoney' then
       return exports['mz_core']:RemoveMoney(args[1], args[2], args[3], args[4])
     elseif name == 'AddMoney' then
@@ -168,10 +166,6 @@ function MZBankBridge.TransferBankBetweenPlayers(source, target, amount, metadat
   local result, err = coreExport('TransferBankBetweenPlayers', source, target, amount, metadata)
   if type(result) ~= 'table' then return { ok = false, error = err or 'transaction_failed' } end
   return result
-end
-
-function MZBankBridge.GetSourceByCitizenId(citizenid)
-  return coreExport('GetSourceByCitizenId', citizenid)
 end
 
 function MZBankBridge.GetPlayerInventory(source)

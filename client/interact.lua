@@ -1,6 +1,15 @@
 local RegisteredPoints = {}
 local RegisteredAtms = {}
 
+local function isCataloguedAtm(coords)
+  if not coords then return false end
+  local tolerance = tonumber(Config.ATM.catalogMatchDistance) or 2.25
+  for _, knownCoords in ipairs(Config.ATM.catalog or {}) do
+    if #(coords - knownCoords) <= tolerance then return true end
+  end
+  return false
+end
+
 local function interactionConfig()
   return type(Config.Interaction) == 'table' and Config.Interaction or {}
 end
@@ -85,6 +94,7 @@ end
 local function registerAtm(model, entity)
   if not entity or entity == 0 or not DoesEntityExist(entity) then return end
   local coords = GetEntityCoords(entity)
+  if not isCataloguedAtm(coords) then return end
   local id = atmPointId(model, coords)
   if RegisteredAtms[id] then
     RegisteredAtms[id].entity = entity

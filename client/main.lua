@@ -2,11 +2,29 @@ local isOpen = false
 local currentPoint
 local sessionToken
 local sessionChannel
+local sessionAuthenticated = false
 local sessionExpiresAt = 0
 local closeBank
 local atmAnimationActive = false
 local atmAnimationPending = false
 local ATM_SCENARIO = 'PROP_HUMAN_ATM'
+
+local CARD_SESSION_ERRORS = {
+  card_not_found = true,
+  card_invalid = true,
+  card_blocked = true,
+  card_owner_mismatch = true,
+  inventory_unavailable = true
+}
+
+local function isCataloguedAtm(coords)
+  if not coords then return false end
+  local tolerance = tonumber(Config.ATM.catalogMatchDistance) or 2.25
+  for _, knownCoords in ipairs(Config.ATM.catalog or {}) do
+    if #(coords - knownCoords) <= tolerance then return true end
+  end
+  return false
+end
 
 local function usesMzInteract()
   return type(Config.Interaction) == 'table'
@@ -97,7 +115,21 @@ local function serverCallback(name, ...)
     if result.ok == true and sessionToken then
       sessionExpiresAt = GetGameTimer() + (Config.SessionTimeoutSeconds * 1000)
     end
-    if result.error == 'invalid_session' or result.error == 'session_expired' or result.error == 'too_far' then
+    if CARD_SESSION_ERRORS[result.error] and sessionAuthenticated and isOpen then
+      local rejectedToken = sessionToken
+      sessionAuthenticated = false
+      SendNUIMessage({ action = 'cardRejected' })
+      CreateThread(function()
+        Wait(900)
+        if isOpen and sessionToken == rejectedToken then closeBank('card_invalidated') end
+      end)
+    end
+    if result.error == 'invalid_session'
+      or result.error == 'session_expired'
+      or result.error == 'too_far'
+      or result.error == 'invalid_ped'
+      or result.error == 'player_dead'
+      or result.error == 'vehicle_forbidden' then
       closeBank(result.error)
     end
     return result
@@ -111,6 +143,7 @@ closeBank = function(reason)
   end
   sessionToken = nil
   sessionChannel = nil
+  sessionAuthenticated = false
   sessionExpiresAt = 0
   isOpen = false
   stopAtmAnimation()
@@ -134,6 +167,7 @@ local function openBank(point)
 
   sessionToken = result.data.token
   sessionChannel = result.data.channel
+  sessionAuthenticated = result.data.authenticated == true
   sessionExpiresAt = GetGameTimer() + (Config.SessionTimeoutSeconds * 1000)
 
   local overview
@@ -179,27 +213,34 @@ RegisterNUICallback('close', function(_, cb)
 end)
 
 RegisterNUICallback('authenticate', function(_, cb)
-  cb(serverCallback('mz_bank:server:authenticate', sessionToken))
+  local result = serverCallback('mz_bank:server:authenticate', sessionToken)
+  if result.ok == true then sessionAuthenticated = true end
+  cb(result)
 end)
 
 RegisterNUICallback('refresh', function(_, cb)
-  cb(serverCallback('mz_bank:server:overview', sessionToken, sessionChannel))
+  cb(serverCallback('mz_bank:server:overview', sessionToken))
 end)
 
 RegisterNUICallback('withdraw', function(data, cb)
-  cb(serverCallback('mz_bank:server:withdraw', sessionToken, data and data.amount))
+  cb(serverCallback('mz_bank:server:withdraw', sessionToken, {
+    amount = data and data.amount,
+    idempotencyKey = data and data.idempotencyKey
+  }))
 end)
 
 RegisterNUICallback('deposit', function(data, cb)
-  cb(serverCallback('mz_bank:server:deposit', sessionToken, data and data.amount))
+  cb(serverCallback('mz_bank:server:deposit', sessionToken, {
+    amount = data and data.amount,
+    idempotencyKey = data and data.idempotencyKey
+  }))
 end)
 
 RegisterNUICallback('transfer', function(data, cb)
   cb(serverCallback('mz_bank:server:transfer', sessionToken, {
-    recipientType = 'server_id',
     recipientValue = data and (data.recipientValue or data.targetId),
     amount = data and data.amount,
-    channel = sessionChannel
+    idempotencyKey = data and data.idempotencyKey
   }))
 end)
 
@@ -220,7 +261,10 @@ local function closestAtm(position)
       model, false, false, false
     )
     if object ~= 0 and DoesEntityExist(object) then
-      return { channel = 'atm', coords = GetEntityCoords(object), entity = object }
+      local coords = GetEntityCoords(object)
+      if isCataloguedAtm(coords) then
+        return { channel = 'atm', coords = coords, entity = object }
+      end
     end
   end
 end

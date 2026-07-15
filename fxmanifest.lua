@@ -20,6 +20,7 @@ client_scripts {
 server_scripts {
   '@oxmysql/lib/MySQL.lua',
   'bridge/server.lua',
+  'server/migrations.lua',
   'server/repository.lua',
   'server/service.lua',
   'server/legacy.lua',
@@ -31,11 +32,13 @@ ui_page 'html/index.html'
 files {
   'html/index.html',
   'html/style.css',
-  'html/script.js'
+  'html/script.js',
+  'sql/*.sql'
 }
 
 dependencies {
   'oxmysql',
   'ox_lib',
-  'mz_core'
+  'mz_core',
+  'mz_inventory'
 }
