@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mz_bank ATM</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="app" class="hidden">
+        <!-- ==================== TERMINAL DE AUTOATENDIMENTO ==================== -->
+        <div class="atm">
+
+            <!-- Topo iluminado com a marca -->
+            <div class="atm-topbar">
+                <div class="brand">
+                    <span class="brand-icon">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="3" y1="22" x2="21" y2="22"></line>
+                            <line x1="6" y1="18" x2="6" y2="11"></line>
+                            <line x1="10" y1="18" x2="10" y2="11"></line>
+                            <line x1="14" y1="18" x2="14" y2="11"></line>
+                            <line x1="18" y1="18" x2="18" y2="11"></line>
+                            <polygon points="12 2 20 7 4 7"></polygon>
+                        </svg>
+                    </span>
+                    <span id="brand-name">Banco Central</span>
+                </div>
+                <div class="atm-status"><span class="led"></span> CAIXA ELETRONICO</div>
+            </div>
+
+            <!-- ==================== FASCIA: SOFT KEYS + TELA + SOFT KEYS ==================== -->
+            <div class="atm-fascia">
+                <!-- botoes fisicos esquerdos -->
+                <div class="softrail left">
+                    <div class="sslot" data-soft="0"><button class="soft-key"></button></div>
+                    <div class="sslot" data-soft="1"><button class="soft-key"></button></div>
+                    <div class="sslot" data-soft="2"><button class="soft-key"></button></div>
+                    <div class="sslot" data-soft="3"><button class="soft-key"></button></div>
+                </div>
+
+                <!-- TELA (LCD) -->
+                <div class="screen">
+                    <div class="scanline"></div>
+                    <div class="glass"></div>
+
+                    <!-- rotulos das bordas (sincronizados com os botoes fisicos) -->
+                    <div class="edge left">
+                        <div class="eslot" data-soft="0"><span class="elabel"></span></div>
+                        <div class="eslot" data-soft="1"><span class="elabel"></span></div>
+                        <div class="eslot" data-soft="2"><span class="elabel"></span></div>
+                        <div class="eslot" data-soft="3"><span class="elabel"></span></div>
+                    </div>
+                    <div class="edge right">
+                        <div class="eslot" data-soft="4"><span class="elabel"></span></div>
+                        <div class="eslot" data-soft="5"><span class="elabel"></span></div>
+                        <div class="eslot" data-soft="6"><span class="elabel"></span></div>
+                        <div class="eslot" data-soft="7"><span class="elabel"></span></div>
+                    </div>
+
+                    <!-- area central (conteudo das telas) -->
+                    <div class="screen-inner">
+                        <!-- boas-vindas -->
+                        <section class="view" data-view="welcome">
+                            <div class="welcome">
+                                <div class="welcome-logo">
+                                    <svg viewBox="0 0 24 24" width="46" height="46" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="3" y1="22" x2="21" y2="22"></line>
+                                        <line x1="6" y1="18" x2="6" y2="11"></line>
+                                        <line x1="10" y1="18" x2="10" y2="11"></line>
+                                        <line x1="14" y1="18" x2="14" y2="11"></line>
+                                        <line x1="18" y1="18" x2="18" y2="11"></line>
+                                        <polygon points="12 2 20 7 4 7"></polygon>
+                                    </svg>
+                                </div>
+                                <h1 id="welcome-title">Bem-vindo</h1>
+                                <p class="blink">Use a entrada iluminada abaixo para inserir o cartao</p>
+                            </div>
+                        </section>
+
+                        <!-- menu principal -->
+                        <section class="view hidden" data-view="menu">
+                            <div class="screen-top">
+                                <div class="account">
+                                    <span class="label">Titular</span>
+                                    <span id="menu-name">-</span>
+                                </div>
+                                <div class="balance-chip">
+                                    <span class="label">Saldo em conta</span>
+                                    <strong id="menu-balance">$0</strong>
+                                </div>
+                            </div>
+                            <div class="menu-center">
+                                <h2>Selecione uma opcao</h2>
+                                <p class="menu-tip">Use os botoes ao lado da tela</p>
+                            </div>
+                        </section>
+
+                        <!-- saldo -->
+                        <section class="view hidden" data-view="balance">
+                            <h2>Saldo em conta</h2>
+                            <div class="big-balance">
+                                <span class="currency currency-symbol">$</span><span id="balance-value">0</span>
+                            </div>
+                            <div class="sub-info">
+                                <div><span class="label">Dinheiro na mao</span><strong id="balance-cash">$0</strong></div>
+                                <div><span class="label">Conta</span><strong id="balance-account">-</strong></div>
+                            </div>
+                        </section>
+
+                        <!-- saque -->
+                        <section class="view hidden" data-view="withdraw">
+                            <h2>Saque</h2>
+                            <p class="hint">Escolha um valor ao lado ou digite no teclado</p>
+                            <div class="amount-display"><span class="currency-symbol">$</span><span id="withdraw-amount">0</span></div>
+                        </section>
+
+                        <!-- deposito -->
+                        <section class="view hidden" data-view="deposit">
+                            <h2>Deposito</h2>
+                            <p class="hint">Escolha um valor ao lado ou digite no teclado</p>
+                            <div class="amount-display"><span class="currency-symbol">$</span><span id="deposit-amount">0</span></div>
+                        </section>
+
+                        <!-- transferencia -->
+                        <section class="view hidden" data-view="transfer">
+                            <h2>Transferencia</h2>
+                            <p class="hint">ID do jogador de destino</p>
+                            <input type="number" id="transfer-target" class="text-input" placeholder="Ex: 12" readonly />
+                            <p class="hint">Valor</p>
+                            <div class="amount-display"><span class="currency-symbol">$</span><span id="transfer-amount">0</span></div>
+                        </section>
+
+                        <!-- extrato -->
+                        <section class="view hidden" data-view="statement">
+                            <h2>Extrato</h2>
+                            <ul class="statement-list" id="statement-list"></ul>
+                        </section>
+
+                        <!-- overlay processando -->
+                        <div class="processing hidden" id="processing">
+                            <div class="spinner"></div>
+                            <span>Processando...</span>
+                        </div>
+                        <!-- toast -->
+                        <div class="toast hidden" id="toast"></div>
+                    </div>
+                </div>
+
+                <!-- botoes fisicos direitos -->
+                <div class="softrail right">
+                    <div class="sslot" data-soft="4"><button class="soft-key"></button></div>
+                    <div class="sslot" data-soft="5"><button class="soft-key"></button></div>
+                    <div class="sslot" data-soft="6"><button class="soft-key"></button></div>
+                    <div class="sslot" data-soft="7"><button class="soft-key"></button></div>
+                </div>
+            </div>
+
+            <!-- acessorios da fascia -->
+            <div class="fascia-access">
+                <button type="button" id="card-slot" class="access-item card-slot waiting" aria-label="Inserir cartao"><span class="slot-led"></span><span id="card-slot-label">INSIRA O CARTAO</span></button>
+                <div class="access-item speaker">
+                    <span class="hole"></span><span class="hole"></span><span class="hole"></span>
+                    <span class="hole"></span><span class="hole"></span><span class="hole"></span>
+                </div>
+            </div>
+
+            <!-- ==================== BANCADA INFERIOR ==================== -->
+            <div class="atm-shelf">
+                <!-- lado esquerdo: saidas -->
+                <div class="shelf-left">
+                    <div class="receipt-slot"><span class="slit"></span>RECIBO</div>
+                    <div class="cash-slot">
+                        <span class="cash-slit"></span>
+                        <span class="cash-label">SAIDA DE DINHEIRO</span>
+                    </div>
+                </div>
+
+                <!-- teclado PIN fisico -->
+                <div class="pinpad">
+                    <div class="keypad">
+                        <button class="key" data-key="1">1</button>
+                        <button class="key" data-key="2">2</button>
+                        <button class="key" data-key="3">3</button>
+                        <button class="key cancel" data-key="cancel">CANCELAR</button>
+                        <button class="key" data-key="4">4</button>
+                        <button class="key" data-key="5">5</button>
+                        <button class="key" data-key="6">6</button>
+                        <button class="key clear" data-key="clear">LIMPAR</button>
+                        <button class="key" data-key="7">7</button>
+                        <button class="key" data-key="8">8</button>
+                        <button class="key" data-key="9">9</button>
+                        <button class="key enter" data-key="enter">ENTRAR</button>
+                        <button class="key" data-key="00">00</button>
+                        <button class="key zero" data-key="0">0</button>
+                        <button class="key back" data-key="back">APAGAR</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

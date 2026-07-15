@@ -1,0 +1,428 @@
+MZ BANK — PROMPTS PARA APLICAR O ROADMAP NO VS CODE/CODEX
+========================================================
+
+COMO USAR
+---------
+Abra no VS Code a pasta real:
+D:\git-hub\repo_oficial
+
+Salve o roadmap em:
+D:\git-hub\repo_oficial\mz_bank\BANK_ROADMAP.md
+
+Cole os prompts abaixo no Codex UM POR VEZ. Não avance sem revisar a etapa anterior e testar no FiveM quando solicitado.
+
+REGRAS FIXAS
+------------
+- Trabalhe sobre os arquivos reais atuais.
+- Não use Git ou histórico como fonte principal.
+- Não invente exports, eventos, callbacks, tabelas ou contratos.
+- Antes de usar contrato de outro resource, localize a implementação real.
+- Não crie saldo paralelo.
+- Preserve player.money.wallet, player.money.bank e mz_player_accounts como fontes oficiais do mz_core.
+- Não marque runtime como aprovado sem evidência fornecida por mim.
+- Preserve a NUI atual, a animação do ATM e o slot amarelo/verde/vermelho.
+- Não implemente Fase 2 ou superior antes da Fase 1 ser aprovada em runtime.
+- Ao final de cada etapa, informe diagnóstico, arquivos alterados, contratos utilizados, riscos, validações e testes pendentes.
+
+========================================================
+PROMPT 00 — INVENTÁRIO REAL, SEM ALTERAR CÓDIGO
+========================================================
+
+Analise o projeto real em D:\git-hub\repo_oficial.
+
+Leia obrigatoriamente:
+- mz_bank\BANK_ROADMAP.md
+- todos os arquivos atuais de mz_bank
+- contratos realmente usados em mz_core
+- contratos realmente usados em mz_economy
+- contratos realmente usados em mz_inventory
+
+Nesta etapa, NÃO altere nenhum arquivo.
+
+Mapeie:
+1. abertura física -> client -> sessão server-side -> autenticação -> overview -> NUI;
+2. depósito, saque e transferência;
+3. emissão, autenticação, bloqueio e substituição de cartão;
+4. sessões ATM, agência e referências a phone;
+5. migrations, repository.prepare(), tabelas e readiness;
+6. ordem de dependências e exports reais;
+7. dados confiados ao client;
+8. animação do ATM e estados do slot do cartão.
+
+Crie:
+mz_bank\reports\PHASE_0_CURRENT_STATE.md
+
+Inclua arquivos relevantes, fluxos, exports, callbacks, eventos, tabelas, contratos confirmados, contratos inexistentes, riscos e pontos já atendidos/parciais/ausentes.
+
+Pare após criar o relatório.
+
+========================================================
+PROMPT 01 — MATRIZ B0-01 A B0-10
+========================================================
+
+Usando BANK_ROADMAP.md e PHASE_0_CURRENT_STATE.md, audite B0-01 até B0-10.
+
+Não altere comportamento do código.
+
+Crie:
+mz_bank\reports\PHASE_0_BLOCKER_MATRIX.md
+
+Para cada bloqueador registre:
+- estado: ATENDIDO, PARCIAL, AUSENTE, NÃO APLICÁVEL ou BLOQUEADO;
+- evidência com arquivo e função;
+- risco;
+- resources envolvidos;
+- correção mínima;
+- dependências;
+- testes estáticos;
+- testes runtime;
+- risco de regressão.
+
+Agrupe:
+- Lote A: B0-01, B0-02, B0-03, B0-04 e B0-09;
+- Lote B: B0-05 e B0-06;
+- Lote C: B0-07, B0-08 e B0-10.
+
+Não implemente nada e não marque a Fase 0 como validada.
+
+========================================================
+PROMPT 02 — IMPLEMENTAR LOTE A
+========================================================
+
+Implemente somente:
+- B0-01 canal controlado pelo client;
+- B0-02 ATM não comprovado pelo servidor;
+- B0-03 cartão não revalidado;
+- B0-04 estado físico confiado ao client;
+- B0-09 superfície interna indevida.
+
+Requisitos:
+- canal físico vem exclusivamente da sessão server-side;
+- payload.channel não alcança phone;
+- token define sessão e canal;
+- ATM usa allowlist/catálogo server-side e posição real do jogador;
+- não dependa apenas de entidade networked;
+- cartão ativo e item físico são revalidados conforme política;
+- bloqueio, revogação, substituição ou remoção impedem novas operações;
+- servidor valida distância, morte, veículo, ped e personagem;
+- callbacks públicos não recebem source/citizenid livres;
+- NUI não recebe identificadores internos;
+- recipientType arbitrário é removido ou restringido.
+
+Preserve:
+- NUI atual;
+- animação do ATM;
+- alinhamento do ped;
+- slot amarelo ao abrir, verde com cartão e vermelho ao retirar/recusar;
+- depósito, saque e transferência atuais;
+- serviços oficiais de saldo do mz_core.
+
+Não implemente phone, PIX, conta pública, transferência offline, outbox completa ou conta empresarial.
+
+Valide sintaxe Lua e JavaScript.
+Atualize somente os itens do Lote A na matriz.
+Crie:
+mz_bank\reports\PHASE_0_LOT_A_IMPLEMENTATION.md
+
+Não marque runtime como aprovado.
+
+========================================================
+PROMPT 03 — REVISÃO ESTÁTICA DO LOTE A
+========================================================
+
+Revise de forma independente o Lote A. Não adicione funcionalidades.
+
+Teste estaticamente:
+- channel adulterado;
+- callback físico tentando phone;
+- token falso/expirado/de outro jogador;
+- coordenada arbitrária;
+- ATM fora da allowlist;
+- distância, morte, veículo, ped e personagem;
+- cartão bloqueado/revogado/substituído;
+- item removido;
+- source/citizenid do client;
+- recipientType arbitrário;
+- vazamento de identificadores internos;
+- limpeza no disconnect/resource stop;
+- preservação da animação e NUI.
+
+Procure no código por payload.channel, citizenid recebido do client, coordenadas aceitas sem validação e callbacks antigos.
+
+Corrija somente defeitos do Lote A.
+Crie:
+mz_bank\reports\PHASE_0_LOT_A_STATIC_REVIEW.md
+
+Classifique itens como APROVADO ESTATICAMENTE, CORRIGIDO, BLOQUEADO ou PENDENTE DE RUNTIME.
+Não marque Fase 0 como [S].
+
+========================================================
+PROMPT 04 — CHECKLIST RUNTIME DO LOTE A
+========================================================
+
+Não altere código.
+
+Crie:
+mz_bank\reports\PHASE_0_LOT_A_RUNTIME_CHECKLIST.md
+
+Inclua testes para:
+- agência válida e falsa;
+- ATM válido e inexistente;
+- abertura distante;
+- channel adulterado;
+- acesso phone por callback físico;
+- token falso, de outro jogador e expirado;
+- afastamento durante sessão;
+- morte;
+- veículo;
+- troca de personagem;
+- cartão válido, de outro titular, bloqueado, revogado e substituído;
+- remoção do item;
+- disconnect;
+- restart mz_bank;
+- início/fim da animação;
+- estados amarelo/verde/vermelho;
+- fechamento correto da NUI.
+
+Cada teste deve ter ID, pré-condição, passos, resultado esperado, evidência, console e campo para resultado real.
+Não execute nem aprove testes.
+
+========================================================
+PROMPT 05 — CORRIGIR FALHAS REAIS DO LOTE A
+========================================================
+
+Use somente depois que eu fornecer resultados reais do checklist do Lote A.
+
+Analise apenas as falhas informadas.
+- Não refatore módulos não relacionados.
+- Identifique causa raiz.
+- Faça a menor correção possível.
+- Preserve testes que já passaram.
+- Não altere o contrato financeiro do Lote B.
+- Não invente evidências.
+
+Atualize o checklist sem apagar o resultado real.
+Crie:
+mz_bank\reports\PHASE_0_LOT_A_RUNTIME_FIXES.md
+
+Informe quais testes precisam ser repetidos.
+
+========================================================
+PROMPT 06 — IMPLEMENTAR LOTE B
+========================================================
+
+Implemente somente:
+- B0-05 resultado financeiro ambíguo;
+- B0-06 contrato de valores e limites.
+
+Antes de alterar, confirme os serviços reais do mz_core, correlationId, integração com mz_economy e tipos numéricos do schema.
+
+B0-05:
+- separar resultado confirmado do refresh visual;
+- falha posterior de overview/extrato não transforma sucesso financeiro em falha;
+- retornar referência/correlationId oficial;
+- implementar idempotência persistente mínima para operações atuais;
+- mesma chave não movimenta saldo novamente;
+- resultado anterior é recuperável;
+- não criar outbox completa paralela no mz_bank.
+
+B0-06:
+- aceitar somente inteiro;
+- rejeitar decimal, zero, negativo, texto, NaN e infinito;
+- definir limite por operação e canal;
+- documentar limite diário ou sua inexistência;
+- documentar taxa e arredondamento;
+- respeitar o máximo do schema do mz_core.
+
+Preserve locks e atomicidade do mz_core, NUI, sessões, animação e slot.
+Não implemente transferência offline.
+
+Valide sintaxe e replay/duplo clique.
+Crie:
+mz_bank\reports\PHASE_0_LOT_B_IMPLEMENTATION.md
+
+Atualize somente B0-05 e B0-06 na matriz.
+Não marque runtime.
+
+========================================================
+PROMPT 07 — REVISÃO E CHECKLIST DO LOTE B
+========================================================
+
+Revise estaticamente o Lote B e corrija somente defeitos dele.
+
+Verifique:
+- decimal/zero/negativo/texto;
+- limites e taxas;
+- chave ausente e repetida;
+- duplo clique;
+- timeout após commit;
+- falha de overview após sucesso;
+- referência oficial;
+- ausência de saldo paralelo;
+- integração com locks do mz_core;
+- comportamento com mz_economy indisponível.
+
+Crie:
+- mz_bank\reports\PHASE_0_LOT_B_STATIC_REVIEW.md
+- mz_bank\reports\PHASE_0_LOT_B_RUNTIME_CHECKLIST.md
+
+O checklist deve cobrir depósito, saque, transferência, saldo insuficiente, autotransferência, destinatário inválido/offline, concorrência, disconnect, falha SQL, reconnect, restart, cache/persistência e ledger/correlationId.
+
+Inclua invariantes e queries de conferência.
+Não execute testes e não marque Fase 0 como [S].
+
+========================================================
+PROMPT 08 — IMPLEMENTAR LOTE C
+========================================================
+
+Implemente somente:
+- B0-07 inicialização e dependências;
+- B0-08 schema e migrations;
+- B0-10 segurança do legado.
+
+B0-07:
+- confirmar ordem real: oxmysql, ox_lib, mz_core, mz_economy, mz_inventory, mz_bank;
+- não editar server.cfg automaticamente sem mostrar a proposta;
+- readiness explícito;
+- informar dependência ausente.
+
+B0-08:
+- uma única fonte de verdade para mz_bank_cards;
+- migration versionada e idempotente;
+- remover duplicação com repository.prepare();
+- version/readiness check;
+- falha de migration mantém serviço indisponível com erro explícito;
+- não apagar dados.
+
+B0-10:
+- legado desativado por padrão;
+- ACE obrigatória;
+- detectar titulares duplicados e várias linhas para mesma conta;
+- rejeitar saldo negativo e conflitos;
+- nunca somar saldo legado automaticamente;
+- exigir preview, confirmação forte e relatório persistente;
+- não apagar tabelas legadas;
+- não importar histórico automaticamente.
+
+Crie migration/documentação necessárias e:
+mz_bank\reports\PHASE_0_LOT_C_IMPLEMENTATION.md
+
+Atualize B0-07, B0-08 e B0-10 na matriz.
+Não execute migration destrutiva e não marque runtime.
+
+========================================================
+PROMPT 09 — REVISÃO ESTÁTICA FINAL DA FASE 0
+========================================================
+
+Releia o roadmap, todos os relatórios e os arquivos reais atuais.
+Revise B0-01 a B0-10 sem confiar apenas nos relatórios anteriores.
+
+Confirme:
+- canal físico da sessão;
+- phone inalcançável;
+- ATM arbitrário negado;
+- validações físicas server-side;
+- cartão revalidado;
+- callbacks sem source/citizenid livres;
+- valores inteiros e limites;
+- resultado separado do refresh;
+- idempotência mínima persistente;
+- dependências/readiness;
+- migration com fonte única;
+- legado protegido;
+- ausência de saldo paralelo e transferência offline;
+- ausência de regressão na NUI/animação/slot.
+
+Execute validações Lua/JavaScript, busca por exports inexistentes, callbacks antigos, tabelas legadas no fluxo normal, escrita direta de saldo e dados vindos do client.
+
+Crie:
+mz_bank\reports\PHASE_0_STATIC_APPROVAL.md
+
+Marque Fase 0 como [S] somente se todos os critérios estáticos tiverem evidência real.
+Caso contrário, marque [!] e liste bloqueador, impacto, correção e testes afetados.
+Nunca marque [R].
+
+========================================================
+PROMPT 10 — PREPARAR FASE 1 EM STAGING
+========================================================
+
+Use somente se PHASE_0_STATIC_APPROVAL.md marcar [S].
+Não implemente novas funcionalidades.
+
+Crie:
+- mz_bank\RUNTIME_REPORT_PHASE_1.md
+- mz_bank\reports\PHASE_1_EXECUTION_GUIDE.md
+
+Organize RT-INIT, RT-SESSION, RT-CARD, RT-CASH, RT-TRANSFER e RT-RETRY.
+Inclua ambiente, versões, migrations, pré-condições, comandos, fault injection, queries, invariantes, evidências, resultado real, status, bugs e repetição.
+
+Não execute testes, não marque [R] e não implemente Fase 2.
+
+========================================================
+PROMPT 11 — CORRIGIR RESULTADOS REAIS DA FASE 1
+========================================================
+
+Use somente depois que eu fornecer resultados reais do FiveM staging.
+
+Para cada falha:
+- localizar causa raiz;
+- classificar como código, configuração, migration, dependência ou teste bloqueado;
+- fazer correção mínima;
+- preservar testes aprovados;
+- não inventar evidência;
+- não aprovar teste não repetido.
+
+Atualize RUNTIME_REPORT_PHASE_1.md e crie:
+mz_bank\reports\PHASE_1_RUNTIME_FIXES.md
+
+Informe testes que precisam ser repetidos.
+
+========================================================
+PROMPT 12 — DECISÃO FINAL DA FASE 1
+========================================================
+
+Use somente após todos os testes serem executados e registrados.
+
+Revise RUNTIME_REPORT_PHASE_1.md.
+- teste bloqueado não é aprovado;
+- teste não executado não é aprovado;
+- divergência de saldo/cache/persistência ou duplicidade bloqueia a fase;
+- não implemente Fase 2 nesta revisão.
+
+Se todos os gates passarem, registre:
+Fase 1: [R] Aprovada em runtime
+
+Caso contrário:
+Fase 1: [!] Bloqueada
+
+Crie:
+mz_bank\reports\PHASE_1_FINAL_DECISION.md
+
+========================================================
+PROMPT 13 — SOMENTE APÓS FASE 1 [R]: PLANEJAR FASE 2
+========================================================
+
+Não implemente ainda.
+Analise a identidade bancária pública e crie:
+mz_bank\reports\PHASE_2_DESIGN_REVIEW.md
+
+Defina cardinalidade, branch, account_number, check_digit, account_type, estados, índices, criação idempotente, backfill, DTO público, privacidade, transferência por conta, remoção do server ID, migrations e compatibilidade com cartão/phone.
+
+Aguarde aprovação antes de alterar código.
+
+========================================================
+PROMPT CURTO PARA RETOMAR OUTRO DIA
+========================================================
+
+Leia BANK_ROADMAP.md, os relatórios em mz_bank\reports e os arquivos reais atuais. Informe o último gate concluído, pendências e o próximo prompt seguro. Não altere nada antes do diagnóstico. Não use Git como fonte principal e não marque runtime sem evidência.
+
+========================================================
+PROMPT DE EMERGÊNCIA APÓS REGRESSÃO
+========================================================
+
+Uma regressão apareceu após a última etapa.
+Não restaure automaticamente pelo Git e não reverta arquivos inteiros.
+Compare arquivos atuais, relatórios e comportamento anterior.
+Identifique alteração causadora, fluxo afetado, contrato quebrado, menor correção e testes a repetir.
+Preserve saldos oficiais, migrations aplicadas, dados existentes e UX que continua funcionando.
+Apresente o diagnóstico antes de fazer a correção cirúrgica.

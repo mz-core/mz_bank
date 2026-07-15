@@ -1,0 +1,477 @@
+/* ==========================================================================
+   mz_bank - NUI de caixa eletronico (terminal de autoatendimento)
+   Paleta: metal escuro (neutros) + teal (marca) + ambar (acento) + vermelho (erro)
+========================================================================== */
+:root {
+    --metal-900: #191c1f;
+    --metal-850: #202429;
+    --metal-800: #262b30;
+    --metal-700: #333a41;
+    --metal-600: #434a52;
+    --metal-500: #565f68;
+    --metal-line: #0e1113;
+
+    --lcd-bg: #04120f;
+    --lcd-bg-2: #072a20;
+    --brand: #2dd4bf;      /* teal */
+    --brand-dim: #158a7c;
+    --amber: #f5b642;      /* acento */
+    --danger: #ef5350;
+    --text: #eafaf6;
+    --muted: #7fa89f;
+
+    --radius: 14px;
+    --font-sans: 'Segoe UI', 'Inter', system-ui, sans-serif;
+    --font-mono: 'Consolas', 'SF Mono', monospace;
+
+    --rail-w: 40px;
+    --edge-w: 112px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+    width: 100%;
+    height: 100%;
+    font-family: var(--font-sans);
+    overflow: hidden;
+    background: transparent;
+    user-select: none;
+}
+
+.hidden { display: none !important; }
+
+#app {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.72));
+    animation: fadeIn 0.25s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ==================== CARCACA DO TERMINAL ==================== */
+.atm {
+    width: 760px;
+    background:
+        linear-gradient(180deg, var(--metal-700), var(--metal-800) 45%, var(--metal-900));
+    border: 2px solid var(--metal-line);
+    border-radius: 26px;
+    padding: 20px 22px 24px;
+    box-shadow:
+        0 0 0 8px rgba(0,0,0,0.35),
+        0 40px 80px rgba(0,0,0,0.65),
+        inset 0 2px 0 rgba(255,255,255,0.06),
+        inset 0 -3px 8px rgba(0,0,0,0.5);
+    animation: bootUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes bootUp {
+    from { transform: translateY(20px) scale(0.97); opacity: 0; }
+    to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* ==================== TOPO / MARCA ==================== */
+.atm-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    margin-bottom: 16px;
+}
+.brand {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--brand);
+    font-weight: 800; font-size: 18px;
+    letter-spacing: 0.5px; text-transform: uppercase;
+    text-shadow: 0 0 14px rgba(45,212,191,0.35);
+}
+.brand-icon { display: flex; }
+.atm-status {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 10px; font-weight: 700;
+    color: var(--muted); letter-spacing: 2px;
+}
+.led {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--brand); box-shadow: 0 0 8px var(--brand);
+    animation: pulse 1.6s infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ==================== FASCIA (soft keys + tela) ==================== */
+.atm-fascia {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+}
+
+/* trilhos de botoes fisicos */
+.softrail {
+    width: var(--rail-w);
+    display: flex;
+    flex-direction: column;
+}
+.sslot {
+    flex: 1;               /* 4 divisoes iguais -> mesma altura da tela */
+    display: flex;
+    align-items: center;
+}
+.softrail.left  .sslot { justify-content: flex-end; }
+.softrail.right .sslot { justify-content: flex-start; }
+.soft-key {
+    width: 100%;
+    height: 30px;
+    border: none;
+    border-radius: 5px;
+    background: linear-gradient(180deg, var(--metal-500), var(--metal-800));
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.14),
+        0 3px 4px rgba(0,0,0,0.55),
+        0 0 0 1px var(--metal-line);
+    cursor: pointer;
+    transition: transform 0.05s, box-shadow 0.1s;
+}
+.softrail.left  .soft-key { border-radius: 5px 3px 3px 5px; }
+.softrail.right .soft-key { border-radius: 3px 5px 5px 3px; }
+.soft-key.active {
+    background: linear-gradient(180deg, var(--brand), var(--brand-dim));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 10px rgba(45,212,191,0.5);
+}
+.soft-key:active { transform: translateY(2px); box-shadow: 0 0 0 1px var(--metal-line); }
+
+/* ==================== TELA (LCD) ==================== */
+.screen {
+    flex: 1;
+    position: relative;
+    height: 340px;
+    background: radial-gradient(ellipse at 50% 0%, var(--lcd-bg-2), var(--lcd-bg) 70%);
+    border-radius: 8px;
+    overflow: hidden;
+    color: var(--text);
+    border: 3px solid #05100d;
+    box-shadow:
+        inset 0 0 50px rgba(0,0,0,0.7),
+        0 0 0 3px var(--metal-850),
+        0 0 0 5px var(--metal-line);
+}
+.scanline {
+    position: absolute; inset: 0; z-index: 6; pointer-events: none;
+    background: repeating-linear-gradient(
+        0deg, rgba(45,212,191,0.035) 0, rgba(45,212,191,0.035) 1px, transparent 2px, transparent 4px);
+}
+.glass {
+    position: absolute; inset: 0; z-index: 7; pointer-events: none;
+    background: linear-gradient(125deg, rgba(255,255,255,0.06) 0%, transparent 35%);
+}
+
+/* rotulos das bordas -> alinham com os 4 botoes de cada lado */
+.edge {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: var(--edge-w);
+    display: flex;
+    flex-direction: column;
+    z-index: 4;
+}
+.edge.left  { left: 0; }
+.edge.right { right: 0; }
+.eslot {
+    flex: 1;               /* 4 divisoes iguais -> casa com .sslot */
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+}
+.edge.left  .eslot { justify-content: flex-start; }
+.edge.right .eslot { justify-content: flex-end; }
+.elabel {
+    position: relative;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.15;
+    white-space: nowrap;
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 5px;
+    background: rgba(45,212,191,0.1);
+    max-width: 100%;
+}
+.eslot .elabel:empty { display: none; }
+/* conector (traço) apontando para o botao fisico */
+.edge.left  .elabel { border-left: 3px solid var(--brand); border-radius: 0 5px 5px 0; text-align: left; }
+.edge.right .elabel { border-right: 3px solid var(--brand); border-radius: 5px 0 0 5px; text-align: right; }
+.eslot.danger .elabel { background: rgba(239,83,80,0.14); color: var(--danger); }
+.edge.left  .eslot.danger .elabel { border-left-color: var(--danger); }
+.edge.right .eslot.danger .elabel { border-right-color: var(--danger); }
+
+/* area central */
+.screen-inner {
+    position: absolute;
+    inset: 0;
+    padding: 16px calc(var(--edge-w) + 4px);
+    z-index: 2;
+}
+.view {
+    position: absolute;
+    inset: 0;
+    padding: 16px calc(var(--edge-w) + 4px);
+    display: flex;
+    flex-direction: column;
+    animation: viewIn 0.22s ease;
+}
+@keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.view h1 { font-size: 24px; text-align: center; }
+.view h2 {
+    font-size: 15px; color: var(--brand);
+    text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 10px; text-align: center;
+}
+.hint { font-size: 12px; color: var(--muted); margin: 6px 0; text-align: center; }
+
+/* welcome */
+.welcome {
+    margin: auto; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    color: var(--brand);
+}
+.welcome-logo {
+    width: 92px; height: 92px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--brand-dim); border-radius: 50%;
+    box-shadow: 0 0 26px rgba(45,212,191,0.25);
+}
+.welcome p { color: var(--muted); font-size: 13px; }
+.blink { animation: blink 1.4s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+
+/* menu */
+.screen-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 10px; margin-bottom: 4px;
+}
+.account { display: flex; flex-direction: column; }
+.label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.account span:last-child { font-size: 14px; font-weight: 700; }
+.balance-chip {
+    text-align: right;
+    background: rgba(45,212,191,0.08);
+    border: 1px solid var(--brand-dim);
+    border-radius: 8px; padding: 5px 12px;
+}
+.balance-chip strong { color: var(--brand); font-size: 16px; font-family: var(--font-mono); }
+.menu-center { margin: auto; text-align: center; }
+.menu-center h2 { font-size: 17px; margin-bottom: 4px; }
+.menu-tip { font-size: 12px; color: var(--muted); }
+
+/* saldo */
+.big-balance {
+    margin: 22px 0 16px; text-align: center;
+    font-family: var(--font-mono); color: var(--brand);
+    font-size: 48px; font-weight: 700;
+    text-shadow: 0 0 20px rgba(45,212,191,0.4);
+}
+.big-balance .currency { font-size: 26px; vertical-align: super; opacity: 0.7; }
+.sub-info { display: flex; gap: 10px; margin-bottom: auto; }
+.sub-info > div {
+    flex: 1; background: rgba(255,255,255,0.03);
+    border-radius: 8px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.sub-info strong { font-family: var(--font-mono); font-size: 15px; }
+
+/* entrada de valor */
+.amount-display {
+    font-family: var(--font-mono);
+    font-size: 40px; font-weight: 700;
+    color: var(--amber); text-align: center;
+    padding: 12px; margin: 8px 0;
+    background: rgba(0,0,0,0.35); border-radius: 8px;
+    border: 1px solid rgba(245,182,66,0.3);
+    box-shadow: inset 0 0 20px rgba(245,182,66,0.06);
+}
+.text-input {
+    width: 100%; padding: 10px 12px;
+    font-family: var(--font-mono); font-size: 20px; text-align: center;
+    color: var(--text); background: rgba(0,0,0,0.35);
+    border: 1px solid var(--brand-dim); border-radius: 8px; outline: none;
+}
+.text-input.focus-field { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245,182,66,0.25); }
+
+/* extrato */
+.statement-list { list-style: none; flex: 1; overflow-y: auto; margin-top: 4px; }
+.statement-list li {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12px;
+}
+.st-desc { display: flex; flex-direction: column; gap: 2px; }
+.st-desc small { color: var(--muted); font-size: 10px; }
+.st-amount { font-family: var(--font-mono); font-weight: 700; }
+.st-amount.pos { color: var(--brand); }
+.st-amount.neg { color: var(--danger); }
+.statement-empty { color: var(--muted); text-align: center; margin: auto; font-size: 13px; }
+
+/* processando / toast */
+.processing {
+    position: absolute; inset: 0; z-index: 20;
+    background: rgba(4,18,15,0.88);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; color: var(--brand); font-weight: 600;
+}
+.spinner {
+    width: 44px; height: 44px;
+    border: 4px solid rgba(45,212,191,0.2); border-top-color: var(--brand);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast {
+    position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+    z-index: 30; padding: 10px 20px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; color: #fff;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5); animation: toastIn 0.25s ease;
+}
+.toast.success { background: var(--brand-dim); }
+.toast.error   { background: var(--danger); }
+.toast.info    { background: var(--metal-600); }
+@keyframes toastIn { from { transform: translate(-50%, 12px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+
+/* ==================== ACESSORIOS DA FASCIA ==================== */
+.fascia-access {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin: 18px 4px 6px;
+}
+.access-item.card-slot {
+    appearance: none;
+    display: flex; align-items: center; gap: 9px;
+    min-width: 190px;
+    font-family: var(--font-sans);
+    font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted);
+    background: var(--metal-900); border: 1px solid var(--metal-line);
+    border-radius: 6px; padding: 12px 16px 10px;
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.7);
+    position: relative;
+    cursor: default;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+.card-slot::after {
+    content: ""; position: absolute; right: 12px; left: 12px; top: 6px; height: 3px;
+    background: #000; border-radius: 2px; box-shadow: 0 1px 0 rgba(255,255,255,0.05);
+}
+.card-slot.waiting {
+    color: var(--amber);
+    border-color: rgba(245,182,66,0.55);
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.7), 0 0 12px rgba(245,182,66,0.2);
+    cursor: pointer;
+}
+.card-slot.waiting:hover {
+    border-color: var(--amber);
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.7), 0 0 18px rgba(245,182,66,0.35);
+}
+.card-slot.inserted {
+    color: var(--brand);
+    border-color: rgba(45,212,191,0.65);
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.7), 0 0 14px rgba(45,212,191,0.28);
+}
+.card-slot.ejecting,
+.card-slot.error {
+    color: var(--danger);
+    border-color: rgba(239,83,80,0.68);
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.7), 0 0 14px rgba(239,83,80,0.3);
+}
+.card-slot:disabled { opacity: 1; }
+.slot-led {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--amber); box-shadow: 0 0 8px var(--amber);
+    animation: pulse 1.4s infinite;
+    transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+.card-slot.inserted .slot-led {
+    background: var(--brand); box-shadow: 0 0 9px var(--brand);
+    animation: none;
+}
+.card-slot.ejecting .slot-led,
+.card-slot.error .slot-led {
+    background: var(--danger); box-shadow: 0 0 9px var(--danger);
+    animation: pulse 0.55s infinite;
+}
+.speaker { display: flex; gap: 4px; padding: 6px; }
+.speaker .hole {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--metal-900); box-shadow: inset 0 1px 2px rgba(0,0,0,0.9);
+}
+
+/* ==================== BANCADA INFERIOR ==================== */
+.atm-shelf {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    padding: 16px;
+    background: linear-gradient(180deg, var(--metal-600), var(--metal-800));
+    border: 1px solid var(--metal-line);
+    border-radius: 14px;
+    box-shadow:
+        inset 0 2px 0 rgba(255,255,255,0.06),
+        inset 0 -4px 12px rgba(0,0,0,0.5);
+}
+
+/* lado esquerdo: saidas de recibo e dinheiro */
+.shelf-left {
+    flex: 1;
+    display: flex; flex-direction: column; gap: 14px;
+    justify-content: center;
+}
+.receipt-slot {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--muted);
+}
+.receipt-slot .slit {
+    flex: 1; height: 6px; background: #000; border-radius: 3px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
+}
+.cash-slot {
+    display: flex; flex-direction: column; gap: 8px;
+    background: linear-gradient(180deg, #0a0d0f, #000);
+    border-radius: 8px; padding: 14px;
+    box-shadow: inset 0 6px 14px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.05);
+}
+.cash-slit {
+    height: 14px; background: #000; border-radius: 4px;
+    border-top: 2px solid #1a1f22;
+    box-shadow: inset 0 4px 8px rgba(0,0,0,1);
+}
+.cash-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 2px; color: var(--muted); text-align: center;
+}
+
+/* teclado PIN */
+.pinpad {
+    background: var(--metal-900);
+    border: 1px solid var(--metal-line);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: inset 0 3px 10px rgba(0,0,0,0.7);
+}
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(4, 58px);
+    grid-auto-rows: 46px;
+    gap: 9px;
+}
+.key {
+    font-size: 17px; font-weight: 700; color: var(--text);
+    background: linear-gradient(180deg, var(--metal-500), var(--metal-700));
+    border: 1px solid var(--metal-line); border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 var(--metal-900), inset 0 1px 0 rgba(255,255,255,0.12);
+    transition: transform 0.05s, box-shadow 0.05s;
+}
+.key:active {
+    transform: translateY(3px);
+    box-shadow: 0 0 0 var(--metal-900), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.key.cancel { color: var(--danger); font-size: 9.5px; }
+.key.clear  { color: var(--amber); font-size: 10px; }
+.key.enter  { color: var(--brand); font-size: 11px; }
+.key.back   { font-size: 10px; color: var(--muted); }
