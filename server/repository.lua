@@ -1,5 +1,49 @@
 MZBankRepository = {}
 
+local publicAccountPolicy = type(Config.PublicAccount) == 'table' and Config.PublicAccount or {}
+local PERSONAL_ACCOUNT_TYPE = tostring(publicAccountPolicy.AccountType or '')
+
+local function normalizeInternalCitizenId(value)
+  if type(value) ~= 'string' then return nil end
+  local normalized = value:gsub('^%s+', ''):gsub('%s+$', '')
+  if normalized == '' or normalized ~= value or #normalized > 32 then return nil end
+  return normalized
+end
+
+function MZBankRepository.getPublicAccountByOwner(citizenid)
+  citizenid = normalizeInternalCitizenId(citizenid)
+  if not citizenid then return nil, 'invalid_citizenid' end
+  if PERSONAL_ACCOUNT_TYPE ~= 'personal' then return nil, 'invalid_account_type' end
+
+  return MySQL.single.await([[
+    SELECT id, citizenid, branch, account_number, check_digit, account_type,
+           status, created_at, updated_at, closed_at
+    FROM mz_bank_accounts
+    WHERE citizenid = ? AND account_type = ?
+    LIMIT 1
+  ]], { citizenid, PERSONAL_ACCOUNT_TYPE })
+end
+
+function MZBankRepository.getPublicAccountByRoute(branch, accountNumber, checkDigit)
+  if type(branch) ~= 'string' then return nil, 'invalid_branch' end
+  if PERSONAL_ACCOUNT_TYPE ~= 'personal' then return nil, 'invalid_account_type' end
+  if type(MZBankAccountIdentity) ~= 'table'
+    or type(MZBankAccountIdentity.ValidateRoute) ~= 'function' then
+    return nil, 'account_identity_unavailable'
+  end
+
+  local valid, validationError = MZBankAccountIdentity.ValidateRoute(branch, accountNumber, checkDigit)
+  if valid ~= true then return nil, validationError or 'invalid_route' end
+
+  return MySQL.single.await([[
+    SELECT id, citizenid, branch, account_number, check_digit, account_type,
+           status, created_at, updated_at, closed_at
+    FROM mz_bank_accounts
+    WHERE branch = ? AND account_number = ? AND check_digit = ? AND account_type = ?
+    LIMIT 1
+  ]], { branch, accountNumber, checkDigit, PERSONAL_ACCOUNT_TYPE })
+end
+
 function MZBankRepository.getCard(cardUid)
   return MySQL.single.await([[
     SELECT id, card_uid, citizenid, last4, status, issued_at, updated_at, blocked_at

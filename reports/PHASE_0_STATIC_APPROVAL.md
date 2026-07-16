@@ -273,14 +273,14 @@ ensure mz_inventory
 ensure mz_bank
 ```
 
-- **Runtime pendente:** comprovar start, readiness, migrations e restart no servidor de staging.
+- **Runtime posterior:** APROVADO conforme execução manual no FiveM informada pelo usuário; detalhes adicionais não foram anexados.
 
 ### ST-F0-02 — Contrato contraditório para `mz_economy` indisponível
 
 - **Itens:** B0-07 e comportamento preservado do Lote B.
 - **Classificação:** CORRIGIDO.
 - **Evidência:** `mz_economy` foi removido da lista rígida do manifest/bootstrap e incluído como dependência observada. O código não chama `SetReady(false)` quando somente esse resource para, expõe degradação no readiness e deixa `MZBankBridge.GetStatement` controlar a disponibilidade do extrato. README, plano de testes e documentação de startup descrevem a mesma política.
-- **Runtime pendente:** `RTB-ECON-01`, falha do extrato depois do commit, parada/retorno do `mz_economy` e conferência de continuidade das operações do core.
+- **Runtime posterior:** APROVADO conforme execução manual no FiveM informada pelo usuário, incluindo continuidade das operações e comportamento do extrato; detalhes adicionais não foram anexados.
 
 ## 10. Gate final
 
@@ -289,3 +289,23 @@ Fase 0: [S] Validada estaticamente
 ```
 
 A Fase 0 recebe `[S]` porque `B0-01` a `B0-10` possuem evidência estática no código e na configuração efetiva. Este documento não concede aprovação runtime, não marca `[R]` e não substitui os testes da Fase 1 em staging.
+
+## 11. Registro runtime posterior
+
+Em 2026-07-15, após a conclusão desta revisão estática, o usuário informou que os testes runtime dos Lotes A, B e C e os testes financeiros da Fase 1 foram executados manualmente no FiveM e passaram.
+
+Segundo o resultado fornecido pelo usuário:
+
+- depósito, saque e transferência foram aprovados;
+- saldo, cache e persistência foram preservados;
+- callbacks adulterados foram negados;
+- sessões e cartões foram revalidados;
+- animação, NUI e estados amarelo/verde/vermelho do slot foram aprovados;
+- migrations, dependências e controles do legado foram aprovados;
+- não há falhas pendentes conhecidas.
+
+Limitação preservada: não foram fornecidos anexos adicionais de console, queries, vídeo, screenshot, build ou versão da rodada. Nenhuma evidência adicional foi inferida. Este registro posterior não altera a metodologia nem as evidências da revisão estática acima; a decisão runtime está consolidada em `reports/PHASE_1_FINAL_DECISION.md`.
+
+```text
+Fase 0: [S] Validada estaticamente
+```

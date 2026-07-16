@@ -5,7 +5,20 @@ Escopo: `B0-01`, `B0-02`, `B0-03`, `B0-04` e `B0-09`.
 
 ## Estado deste documento
 
-Todos os testes abaixo estão **NÃO EXECUTADOS**. Este documento não contém aprovação runtime, não marca a Fase 0 como `[S]` e não autoriza avanço de fase.
+Os 29 testes abaixo foram **EXECUTADOS MANUALMENTE EM RUNTIME NO FIVEM E APROVADOS**, conforme resultado fornecido pelo usuário em 2026-07-15. Nenhuma evidência adicional, build, console ou query foi fornecida; esses dados não foram inventados.
+
+Esta aprovação é restrita ao Lote A (`B0-01`, `B0-02`, `B0-03`, `B0-04` e `B0-09`). Este documento não atribui gate geral à Fase 0, não aprova os Lotes B/C e não implementa phone.
+
+## Resultado consolidado fornecido pelo usuário
+
+- **Forma de execução:** manual, em runtime no FiveM.
+- **Quantidade executada:** 29.
+- **Quantidade aprovada:** 29.
+- **Quantidade com falha:** 0.
+- **Quantidade bloqueada:** 0.
+- **Resultado informado:** todos os casos passaram.
+- **Evidências adicionais anexadas:** nenhuma.
+- **Confirmação consolidada posterior:** o usuário informou que os testes runtime dos Lotes A, B e C e os testes financeiros da Fase 1 foram executados manualmente no FiveM e passaram; para este checklist, a confirmação preserva os 29 casos do Lote A como `APROVADO`.
 
 ## Resultado real informado para triagem
 
@@ -24,7 +37,7 @@ Todos os testes abaixo estão **NÃO EXECUTADOS**. Este documento não contém a
 - **Segunda correção:** veto de `DoesEntityExist` removido; validações server-side de handle, coordenadas, health e veículo preservadas.
 - **Segunda repetição após a correção:** `PASSOU NO CENÁRIO RELATADO — “abriu certinho agora”.`
 - **Canal/ponto da repetição aprovada:** `[NÃO INFORMADO — não usar este resultado para aprovar individualmente RTA-OPEN-01 ou RTA-OPEN-03]`
-- **Escopo do resultado:** confirma somente que a falha original `entity_missing` não impediu essa abertura; demais critérios do teste e do Lote A continuam pendentes.
+- **Escopo histórico desse resultado:** confirmou somente que a falha original `entity_missing` não impediu aquela abertura. Posteriormente, o usuário informou a execução manual e aprovação dos 29 casos, registrada separadamente neste documento.
 
 Valores atuais que orientam os resultados esperados:
 
@@ -49,17 +62,18 @@ Valores atuais que orientam os resultados esperados:
 
 ## Ambiente da rodada
 
-- **Executor:** `[PENDENTE]`
-- **Data/hora:** `[PENDENTE]`
-- **Servidor/build/artifacts:** `[PENDENTE]`
-- **OneSync:** `[PENDENTE]`
-- **Mapa/MLO:** `[PENDENTE]`
-- **Commit/pacote implantado:** `[PENDENTE]`
-- **Resources e ordem de start:** `[PENDENTE]`
-- **Personagem A / source redigido:** `[PENDENTE]`
-- **Personagem B / source redigido:** `[PENDENTE]`
-- **Ferramenta de captura/adulteração autorizada:** `[PENDENTE]`
-- **Snapshot/backup de dados:** `[PENDENTE]`
+- **Executor:** usuário/responsável pelo servidor; identificação não fornecida.
+- **Data/hora:** execução anterior ao relato de 2026-07-15; horário não fornecido.
+- **Ambiente:** FiveM, execução manual em runtime; instância/build não fornecidos.
+- **Servidor/build/artifacts:** não fornecidos.
+- **OneSync:** não fornecido.
+- **Mapa/MLO:** não fornecido.
+- **Commit/pacote implantado:** não fornecido.
+- **Resources e ordem de start:** não fornecidos como evidência da rodada.
+- **Personagem A / source redigido:** não fornecido.
+- **Personagem B / source redigido:** não fornecido.
+- **Ferramenta de captura/adulteração autorizada:** não fornecida.
+- **Snapshot/backup de dados:** não fornecido.
 
 ---
 
@@ -73,7 +87,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** sessão abre como `branch`; NUI recebe foco e mostra dados do personagem; nenhum cartão é exigido com a configuração atual; nenhuma operação ou DTO assume `phone`; fechamento remove foco e sessão.
 - **Evidência:** `[PENDENTE — vídeo da aproximação/abertura/fechamento, screenshot da NUI e log bank.session.opened com canal branch]`
 - **Console:** `[PENDENTE — colar client/server/log detalhado; registrar inclusive ausência de stack trace]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-OPEN-02 — Agência falsa
 
@@ -83,7 +97,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** abertura negada com `too_far`; nenhum token utilizável, NUI ou movimentação; tentativa registrada como sessão negada.
 - **Evidência:** `[PENDENTE — payload redigido, coordenada usada, resposta completa sem IDs sensíveis e log bank.session.denied]`
 - **Console:** `[PENDENTE — colar saída client/server e confirmar ausência de erro Lua]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-OPEN-03 — ATM válido catalogado
 
@@ -93,7 +107,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** sessão `atm` criada usando o ponto canônico; cartão válido autentica; NUI abre; nenhuma dependência de network ID é exposta; slot e animação seguem os casos de UX abaixo.
 - **Evidência:** `[PENDENTE — vídeo do prop/posição, coordenada, resposta redigida e logs de abertura/autenticação]`
 - **Console:** `[PENDENTE — client/server/log detalhado, incluindo eventuais avisos de native/entidade]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-OPEN-04 — ATM inexistente/fora da allowlist
 
@@ -103,7 +117,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** `atm_invalid`; nenhum token/NUI/movimentação; proximidade entre jogador e coordenada falsa não é aceita como prova de ATM.
 - **Evidência:** `[PENDENTE — posição do jogador, coordenada falsa, menor distância calculada ao catálogo, resposta e log de negação]`
 - **Console:** `[PENDENTE — colar client/server; ausência de stack trace]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-OPEN-05 — Abertura distante com ponto real
 
@@ -113,7 +127,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** `too_far`; ponto verdadeiro não autoriza jogador distante; nenhum token ou operação.
 - **Evidência:** `[PENDENTE — coordenadas, cálculo de distância, resposta e log bank.session.denied]`
 - **Console:** `[PENDENTE — colar client/server/log detalhado]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ## Canal e superfície física
 
@@ -125,7 +139,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** todas as tentativas não físicas retornam `channel_forbidden`; nenhum token/NUI/operação; somente `atm` ou `branch` exatos são aceitos.
 - **Evidência:** `[PENDENTE — matriz payload/resposta e logs de negação, com tokens inexistentes]`
 - **Console:** `[PENDENTE — client/server/log detalhado]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-CHAN-02 — Callback físico tentando selecionar phone
 
@@ -135,7 +149,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** campo extra não seleciona phone; overview continua pertencendo à sessão ATM ou é negado por assinatura, sem log/metadata `phone`; nenhuma capacidade nova é criada.
 - **Evidência:** `[PENDENTE — chamadas redigidas, respostas comparadas e logs mostrando canal atm]`
 - **Console:** `[PENDENTE — client/server/log detalhado; confirmar zero ocorrência runtime de fluxo phone]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-B009-01 — source, citizenid e recipientType arbitrários
 
@@ -145,7 +159,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** campos extras são descartados; destinatário não é resolvido por citizenid/targetId; resposta é `recipient_invalid` ou `recipient_offline`; nenhum identificador interno volta à NUI; saldos não mudam.
 - **Evidência:** `[PENDENTE — payload redigido, resposta, antes/depois dos saldos e captura da NUI/network]`
 - **Console:** `[PENDENTE — client/server/log detalhado; registrar qualquer identificador indevido]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ## Tokens e sessão
 
@@ -157,7 +171,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** `invalid_session` em todas as chamadas; nenhuma movimentação; token não é aceito por semelhança/formato.
 - **Evidência:** `[PENDENTE — token redigido, respostas e saldos antes/depois]`
 - **Console:** `[PENDENTE — bank.session.invalid e ausência de stack trace]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-TOKEN-02 — Token de outro jogador
 
@@ -167,7 +181,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** chamadas de B retornam `invalid_session`; nenhuma leitura ou movimentação na conta A; source é o do callback, não campo do payload.
 - **Evidência:** `[PENDENTE — sources redigidos, resposta, saldos A/B e logs]`
 - **Console:** `[PENDENTE — client A, client B, servidor e log detalhado]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-TOKEN-03 — Token expirado
 
@@ -177,7 +191,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** acesso negado sem movimentação; resposta pode ser `session_expired` se a validação atingir a sessão primeiro ou `invalid_session` se o cleanup periódico já a removeu. Em ambos os casos, token não revive.
 - **Evidência:** `[PENDENTE — timestamps, token redigido, respostas e saldo antes/depois]`
 - **Console:** `[PENDENTE — bank.session.expired ou bank.session.invalid; ausência de erro Lua]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ## Estado físico durante a sessão
 
@@ -189,7 +203,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** NUI/foco/animação encerrados; token fechado ou recusado (`invalid_session`/`too_far`); servidor não executa operação a distância; log registra fechamento ou distância.
 - **Evidência:** `[PENDENTE — vídeo com distância, estado da NUI, resposta do token antigo e saldo]`
 - **Console:** `[PENDENTE — client/server, bank.session.too_far ou bank.session.closed]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-PHYS-02 — Morte durante sessão
 
@@ -199,7 +213,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** NUI fecha, animação termina e foco é liberado; token não executa nova ação; erro/log pode ser `player_dead` ou `invalid_session` conforme a ordem entre fechamento client e validação server-side.
 - **Evidência:** `[PENDENTE — vídeo, resposta do token antigo e saldo antes/depois]`
 - **Console:** `[PENDENTE — client/server e bank.session.physical_state_denied/closed]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-PHYS-03 — Entrada em veículo
 
@@ -209,7 +223,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** sessão/NUI encerradas; token antigo negado; abertura no veículo não prossegue; server-side pode retornar `vehicle_forbidden`; nenhuma operação executada.
 - **Evidência:** `[PENDENTE — vídeo, respostas e log físico]`
 - **Console:** `[PENDENTE — client/server, vehicle_forbidden ou fechamento anterior]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-PHYS-04 — Troca de personagem
 
@@ -219,7 +233,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** token antigo retorna `player_not_loaded` ou `invalid_session`; nenhuma conta do personagem anterior é exposta/movimentada; somente nova sessão usa o novo citizenid server-side.
 - **Evidência:** `[PENDENTE — sequência de troca, respostas, identidades redigidas e saldos separados]`
 - **Console:** `[PENDENTE — mensagem de identity mismatch/cleanup e ausência de IDs na NUI]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-PHYS-05 — Ped indisponível após tolerância
 
@@ -229,7 +243,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** após a tolerância, `invalid_ped` elimina a sessão; restaurar o ped não revive o token; nenhuma movimentação.
 - **Evidência:** `[PENDENTE — método, timestamps, respostas e saldos]`
 - **Console:** `[PENDENTE — bank.session.physical_state_denied com invalid_ped]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO; se não houver método seguro, marcar BLOQUEADO]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ## Cartões e item físico
 
@@ -241,7 +255,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** autenticação e chamadas subsequentes aprovadas; o mesmo cartão é revalidado; operação usa serviços do `mz_core`; nenhum identificador interno aparece na NUI.
 - **Evidência:** `[PENDENTE — item/linha redigidos, vídeo, resposta, saldos e extrato]`
 - **Console:** `[PENDENTE — client/server/log financeiro e ausência de stack trace]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-CARD-02 — Cartão de outro titular
 
@@ -251,7 +265,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** `card_owner_mismatch`; slot vermelho e retorno para amarelo na recusa inicial; nenhuma conta exposta ou movimentada.
 - **Evidência:** `[PENDENTE — metadata/UID redigidos, resposta, vídeo do slot e saldos A/B]`
 - **Console:** `[PENDENTE — bank.card.denied com card_owner_mismatch]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-CARD-03 — Cartão bloqueado
 
@@ -261,7 +275,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** nenhuma nova operação; sessão antiga invalidada ou retorna `card_blocked`; slot fica vermelho antes de fechar; nova autenticação retorna `card_blocked`; saldos inalterados.
 - **Evidência:** `[PENDENTE — método de bloqueio, status antes/depois, vídeo, respostas e saldos]`
 - **Console:** `[PENDENTE — bank.card.blocked e bank.card.session_invalidated/denied]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-CARD-04 — Cartão revogado
 
@@ -271,7 +285,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** sessão antiga não executa operação; erro estável `card_invalid` ou sessão já invalidada; nova autenticação recusada; item presente não substitui status ativo; saldos inalterados.
 - **Evidência:** `[PENDENTE — alteração registrada, linha redigida, vídeo, respostas e saldos]`
 - **Console:** `[PENDENTE — bank.card.session_invalidated/denied, sem stack trace]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-CARD-05 — Cartão substituído
 
@@ -281,7 +295,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** token antigo não opera; somente cartão antigo retorna `card_invalid`; cartão novo próprio/ativo autentica; nenhuma seleção implícita revive credencial substituída; saldo muda apenas pela taxa configurada, se houver.
 - **Evidência:** `[PENDENTE — sequência, UIDs redigidos, status, itens, taxa/saldos e respostas]`
 - **Console:** `[PENDENTE — bank.card.replaced/session_invalidated e erros de autenticação]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-CARD-06 — Remoção do item após autenticação
 
@@ -291,7 +305,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** primeira chamada protegida retorna `card_not_found`/negação e elimina sessão; nenhuma operação; slot vermelho antes do fechamento; token posterior `invalid_session`; saldo inalterado.
 - **Evidência:** `[PENDENTE — inventário antes/depois, vídeo do slot/fechamento, respostas e saldo]`
 - **Console:** `[PENDENTE — bank.card.session_invalidated com card_not_found]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ## Ciclo de vida
 
@@ -303,7 +317,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** sessão e rate limits antigos removidos; token anterior retorna `invalid_session`; NUI antiga não reaparece; nova sessão usa token novo.
 - **Evidência:** `[PENDENTE — timestamps, disconnect/reconnect, tokens redigidos e respostas]`
 - **Console:** `[PENDENTE — playerDropped/cleanup, ausência de stack trace]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-LIFE-02 — Restart de `mz_bank`
 
@@ -313,7 +327,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** NUI fecha, foco libera e tarefas/animação param no resource stop; token antigo não existe após restart; resource volta ready sem erro; nova sessão funciona somente com novo token.
 - **Evidência:** `[PENDENTE — vídeo contínuo, comando/horário, resposta antiga/nova e readiness]`
 - **Console:** `[PENDENTE — stop/start completos, prepare/readiness e qualquer erro Lua/SQL]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ## Animação, slot e fechamento da NUI
 
@@ -325,7 +339,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** ped se alinha ao prop (ou à coordenada se a entidade local não for reencontrada) e inicia `PROP_HUMAN_ATM`; cenário permanece/reinicia enquanto a sessão ATM está aberta; sem teleport brusco ou animação duplicada.
 - **Evidência:** `[PENDENTE — vídeo lateral do alinhamento e início, coordenada/prop usado]`
 - **Console:** `[PENDENTE — client console; registrar erros de entity/scenario/native]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-ANIM-02 — Fim da animação
 
@@ -335,7 +349,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** `ClearPedTasks` encerra o cenário; ped recupera controle; animação não reinicia depois de `isOpen=false`; nenhum loop residual.
 - **Evidência:** `[PENDENTE — vídeo dos três fechamentos e controle recuperado]`
 - **Console:** `[PENDENTE — client/server; ausência de thread/task error]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-UI-01 — Estados amarelo e verde
 
@@ -345,7 +359,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** abertura mostra amarelo `INSIRA O CARTAO`; autenticação válida mostra verde `CARTAO INSERIDO`; nenhuma informação interna aparece na conta, extrato ou mensagens.
 - **Evidência:** `[PENDENTE — screenshots amarelo/verde e inspeção do payload NUI redigido]`
 - **Console:** `[PENDENTE — client/NUI console e servidor]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-UI-02 — Estado vermelho na retirada/recusa
 
@@ -355,7 +369,7 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** recusa inicial usa vermelho e volta para amarelo; invalidação após autenticação usa vermelho e fecha; retirada voluntária usa vermelho/ejecting antes de fechar; verde nunca permanece após item inválido.
 - **Evidência:** `[PENDENTE — vídeo contínuo das três variantes, com tempos aproximados]`
 - **Console:** `[PENDENTE — NUI/client/server e erros de cartão correspondentes]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ### RTA-UI-03 — Fechamento correto da NUI e foco
 
@@ -365,17 +379,17 @@ Valores atuais que orientam os resultados esperados:
 - **Resultado esperado:** `app.hidden`, foco NUI liberado, inputs recuperados, animação encerrada quando ATM, token anterior negado e reabertura legítima possível; nenhum overlay, cursor ou processamento fica preso.
 - **Evidência:** `[PENDENTE — matriz de vídeos/screenshots por causa de fechamento e tentativa de reabertura]`
 - **Console:** `[PENDENTE — client/NUI/server por variante; registrar reason de fechamento quando disponível]`
-- **Resultado real:** `[NÃO EXECUTADO — preencher PASSOU/FALHOU/BLOQUEADO e observações]`
+- **Resultado real:** `APROVADO — execução manual em runtime no FiveM informada pelo usuário; evidência adicional não fornecida.`
 
 ---
 
-## Resumo da rodada — preencher somente após execução
+## Resumo da rodada
 
 - **Total previsto:** 29 testes.
-- **PASSOU:** `[PENDENTE]`
-- **FALHOU:** `[PENDENTE]`
-- **BLOQUEADO:** `[PENDENTE]`
-- **NÃO EXECUTADO:** `29`
-- **Falhas que exigem repetição:** `[PENDENTE]`
-- **Evidências anexadas em:** `[PENDENTE]`
-- **Decisão runtime do Lote A:** `[NÃO AVALIADA — este checklist não aprova runtime]`
+- **APROVADO:** `29`
+- **FALHOU:** `0`
+- **BLOQUEADO:** `0`
+- **NÃO EXECUTADO:** `0`
+- **Falhas que exigem repetição:** nenhuma informada.
+- **Evidências anexadas em:** nenhuma; aprovação registrada a partir do resultado explícito fornecido pelo usuário.
+- **Decisão runtime do Lote A:** `LOTE A APROVADO EM RUNTIME`.

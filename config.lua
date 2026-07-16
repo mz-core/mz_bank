@@ -32,6 +32,23 @@ Config.StatementLimit = 15
 Config.Debug = false
 Config.DebugAce = 'group.mz_owner'
 
+-- Fundacao da identidade bancaria publica (Fase 2 / P2-A). A feature segue
+-- desligada: este lote cria somente schema, politica e algoritmo de DV; nao
+-- cria contas, nao executa backfill e nao altera o fluxo atual de transferencia.
+Config.PublicAccount = {
+  Enabled = false,
+  DefaultBranch = '0001',
+  AccountNumberLength = 8,
+  AccountType = 'personal',
+  CheckDigitAlgorithm = 'mod11',
+  AllowedStatuses = {
+    active = true,
+    blocked = true,
+    frozen = true,
+    closed = true
+  }
+}
+
 Config.Interaction = {
   UseMzInteract = true,
   FallbackMarkers = true,
@@ -205,7 +222,10 @@ Config.Branches = {
   { coords = vector3(150.266, -1040.203, 29.374), radius = 2.0 },
   { coords = vector3(-1212.980, -330.841, 37.787), radius = 2.0 },
   { coords = vector3(-2962.582, 482.627, 15.703), radius = 2.0 },
-  { coords = vector3(1175.062, 2706.639, 38.094), radius = 2.0 }
+  { coords = vector3(1175.062, 2706.639, 38.094), radius = 2.0 },
+  { coords = vector3(247.00, 222.58, 105.29), radius = 2.0 }
+
+  
 }
 
 Config.Card = {

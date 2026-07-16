@@ -20,6 +20,7 @@ client_scripts {
 server_scripts {
   '@oxmysql/lib/MySQL.lua',
   'bridge/server.lua',
+  'server/account_identity.lua',
   'server/migrations.lua',
   'server/repository.lua',
   'server/service.lua',

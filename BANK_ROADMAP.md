@@ -145,9 +145,9 @@ Regras:
 
 | Fase | Estado | Observação |
 |---|---|---|
-| 0 — Estabilização da base atual | `[~]` | Base funcional, com bloqueadores estáticos conhecidos |
-| 1 — Validação runtime crítica | `[!]` | Bloqueada até a conclusão da Fase 0 |
-| 2 — Identidade bancária pública | `[ ]` | Ainda usa server ID no fluxo atual |
+| 0 — Estabilização da base atual | `[S]` | B0-01 a B0-10 validados estaticamente; runtime posterior registrado |
+| 1 — Validação runtime crítica | `[R]` | Testes manuais no FiveM aprovados conforme resultado fornecido pelo usuário |
+| 2 — Identidade bancária pública | `[~]` | P2-A aprovado em runtime; P2-B validado estaticamente; fluxos ainda usam server ID |
 | 3 — Idempotência, outbox e auditoria | `[ ]` | Ledger atual é best effort |
 | 4 — API bancária compartilhada | `[~]` | Existem exports parciais, ainda sem autenticação completa de canal |
 | 5 — Cartão bancário completo | `[~]` | Emissão, bloqueio e substituição existem parcialmente |
@@ -159,7 +159,7 @@ Regras:
 
 # Fase 0 — Estabilização da base atual
 
-**Status:** `[~] Em implementação`
+**Status:** `[S] Validada estaticamente`
 
 ## Objetivo
 
@@ -304,20 +304,20 @@ Antes de permitir `mz_bank_legacy_apply`:
 
 ## Critérios de aprovação estática
 
-- [ ] Client não seleciona o caminho `phone`.
-- [ ] Canal físico é obtido da sessão.
-- [ ] ATM arbitrário é negado.
-- [ ] Morte e veículo são validados no servidor.
-- [ ] Cartão bloqueado/revogado perde validade na sessão.
-- [ ] Remoção do item segue política documentada.
-- [ ] Valores decimais são tratados conforme contrato.
-- [ ] Resultado financeiro não depende do refresh posterior.
-- [ ] Retry da mesma operação não movimenta saldo novamente.
-- [ ] Nenhum `citizenid` livre é aceito no callback público.
-- [ ] Inicialização real inclui as dependências.
-- [ ] Migration possui uma única fonte de verdade.
-- [ ] Sintaxe Lua e JavaScript aprovada.
-- [ ] Revisão de abuso client-side aprovada.
+- [x] Client não seleciona o caminho `phone`.
+- [x] Canal físico é obtido da sessão.
+- [x] ATM arbitrário é negado.
+- [x] Morte e veículo são validados no servidor.
+- [x] Cartão bloqueado/revogado perde validade na sessão.
+- [x] Remoção do item segue política documentada.
+- [x] Valores decimais são tratados conforme contrato.
+- [x] Resultado financeiro não depende do refresh posterior.
+- [x] Retry da mesma operação não movimenta saldo novamente.
+- [x] Nenhum `citizenid` livre é aceito no callback público.
+- [x] Inicialização real inclui as dependências.
+- [x] Migration possui uma única fonte de verdade.
+- [x] Sintaxe Lua e JavaScript aprovada.
+- [x] Revisão de abuso client-side aprovada.
 
 ## Gate da fase
 
@@ -331,9 +331,11 @@ Somente depois desse gate a Fase 1 pode ser executada formalmente.
 
 # Fase 1 — Validação runtime crítica
 
-**Status:** `[!] Bloqueada`
+**Status:** `[R] Aprovada em runtime`
 
 **Dependência:** conclusão estática da Fase 0.
+
+**Registro runtime:** o usuário informou em 2026-07-15 que os testes dos Lotes A, B e C e os testes financeiros da Fase 1 foram executados manualmente no FiveM e passaram. Nenhuma evidência adicional foi anexada; zero falhas pendentes conhecidas foram informadas.
 
 ## Objetivo
 
@@ -355,72 +357,72 @@ Comprovar em FiveM staging que a base atual preserva saldo, cache, persistência
 
 ### Inicialização — RT-INIT
 
-- [ ] Todos os recursos iniciam na ordem oficial.
-- [ ] `mz_bank` só fica ready depois do schema.
-- [ ] Item `bank_card` está disponível.
-- [ ] Restart do banco não altera saldos.
-- [ ] Restart da economia não altera saldos.
-- [ ] Restart do core reconstrói o cache.
-- [ ] Nenhuma tabela de saldo paralela é criada.
-- [ ] Nenhum export ou callback fica ausente.
+- [x] Todos os recursos iniciam na ordem oficial.
+- [x] `mz_bank` só fica ready depois do schema.
+- [x] Item `bank_card` está disponível.
+- [x] Restart do banco não altera saldos.
+- [x] Restart da economia não altera saldos.
+- [x] Restart do core reconstrói o cache.
+- [x] Nenhuma tabela de saldo paralela é criada.
+- [x] Nenhum export ou callback fica ausente.
 
 ### Sessão e canal — RT-SESSION
 
-- [ ] Abrir agência válida.
-- [ ] Negar agência falsa.
-- [ ] Abrir ATM válido.
-- [ ] Negar ATM inexistente.
-- [ ] Negar abertura distante.
-- [ ] Negar canal adulterado.
-- [ ] Negar callback sem sessão.
-- [ ] Negar token falso, expirado ou de outro jogador.
-- [ ] Negar token de outro canal.
-- [ ] Invalidar sessão ao afastar.
-- [ ] Invalidar ou negar operação ao morrer.
-- [ ] Invalidar ou negar operação em veículo.
-- [ ] Limpar sessão no disconnect e restart.
+- [x] Abrir agência válida.
+- [x] Negar agência falsa.
+- [x] Abrir ATM válido.
+- [x] Negar ATM inexistente.
+- [x] Negar abertura distante.
+- [x] Negar canal adulterado.
+- [x] Negar callback sem sessão.
+- [x] Negar token falso, expirado ou de outro jogador.
+- [x] Negar token de outro canal.
+- [x] Invalidar sessão ao afastar.
+- [x] Invalidar ou negar operação ao morrer.
+- [x] Invalidar ou negar operação em veículo.
+- [x] Limpar sessão no disconnect e restart.
 
 ### Cartão — RT-CARD
 
-- [ ] ATM sem cartão é negado.
-- [ ] Cartão válido autentica.
-- [ ] Cartão de outro titular é negado.
-- [ ] Cartão bloqueado é negado.
-- [ ] Cartão revogado é negado.
-- [ ] Bloqueio durante a sessão impede nova operação.
-- [ ] Remoção do item durante a sessão segue a política aprovada.
+- [x] ATM sem cartão é negado.
+- [x] Cartão válido autentica.
+- [x] Cartão de outro titular é negado.
+- [x] Cartão bloqueado é negado.
+- [x] Cartão revogado é negado.
+- [x] Bloqueio durante a sessão impede nova operação.
+- [x] Remoção do item durante a sessão segue a política aprovada.
 
 ### Depósito e saque — RT-CASH
 
-- [ ] Valores válidos preservam `wallet + bank`.
-- [ ] Todo o saldo permitido pode ser movimentado.
-- [ ] Saldo insuficiente não altera nenhuma conta.
-- [ ] Zero, negativo, texto e decimal inválido são negados.
-- [ ] Limite por operação é respeitado.
-- [ ] Limite diário é testado somente se implementado.
-- [ ] Duplo clique não duplica operação.
-- [ ] Cache e banco permanecem iguais após reconnect.
-- [ ] Ledger usa a mesma referência da operação.
+- [x] Valores válidos preservam `wallet + bank`.
+- [x] Todo o saldo permitido pode ser movimentado.
+- [x] Saldo insuficiente não altera nenhuma conta.
+- [x] Zero, negativo, texto e decimal inválido são negados.
+- [x] Limite por operação é respeitado.
+- [x] Limite diário é testado somente se implementado.
+- [x] Duplo clique não duplica operação.
+- [x] Cache e banco permanecem iguais após reconnect.
+- [x] Ledger usa a mesma referência da operação.
 
 ### Transferência — RT-TRANSFER
 
-- [ ] Transferência válida debita e credita uma única vez.
-- [ ] Destinatário inexistente ou offline é negado corretamente.
-- [ ] Autotransferência é negada.
-- [ ] Taxa segue o contrato.
-- [ ] Transferências cruzadas não causam deadlock.
-- [ ] Múltiplas transferências não gastam o mesmo saldo.
-- [ ] Disconnect de uma das pontas não produz estado parcial.
-- [ ] Falha SQL reverte as duas pontas.
-- [ ] Cache só muda depois do commit.
-- [ ] As duas pontas compartilham `correlationId`.
+- [x] Transferência válida debita e credita uma única vez.
+- [x] Destinatário inexistente ou offline é negado corretamente.
+- [x] Autotransferência é negada.
+- [x] Taxa segue o contrato.
+- [x] Transferências cruzadas não causam deadlock.
+- [x] Múltiplas transferências não gastam o mesmo saldo.
+- [x] Disconnect de uma das pontas não produz estado parcial.
+- [x] Falha SQL reverte as duas pontas.
+- [x] Cache só muda depois do commit.
+- [x] As duas pontas compartilham `correlationId`.
 
 ### Resposta ambígua — RT-RETRY
 
-- [ ] Timeout do client após commit não duplica retry.
-- [ ] Reenvio da mesma chave retorna o mesmo resultado.
-- [ ] Falha de overview não oculta uma transferência confirmada.
-- [ ] Restart durante operação termina em estado reconciliável.
+- [x] Timeout do client após commit não duplica retry.
+- [x] Reenvio da mesma chave retorna o mesmo resultado.
+- [x] Falha de overview não oculta uma transferência confirmada.
+- [x] Restart durante operação termina em estado reconciliável.
 
 ## Invariantes
 
@@ -471,7 +473,11 @@ Fase 1: [R] Aprovada em runtime
 
 # Fase 2 — Identidade bancária pública
 
-**Status:** `[ ] Não iniciada`
+**Status:** `[~] Em implementação`
+
+**Lote P2-A:** `[R] Aprovado em runtime` — 27 testes executáveis aprovados manualmente no MySQL/FiveM staging conforme resultado fornecido pelo usuário; 1 caso não aplicável por ausência deliberada do gerador. Migration v3, schema/readiness e política pura de formato/DV aprovados; criação, backfill, resolução e cutover ainda não iniciados.
+
+**Lote P2-B:** `[S] Validado estaticamente` — repository interno e somente leitura da identidade pública adicionado sobre o schema v3 já aprovado; feature pública permanece desligada, sem criação, DTO, overview, backfill, resolução pública, transferência por conta ou alteração da NUI.
 
 ## Objetivo
 
@@ -795,6 +801,11 @@ PIN permanece desativado até existir:
 # Fase 6 — Aplicativo bancário no `mz_phone`
 
 **Status:** `[ ] Não iniciada`
+
+**Preparação de frontend (2026-07-15):** o shell demonstrativo do `mz_phone` foi removido do
+fluxo de produção. Enquanto não existirem os gates e contratos abaixo, o app permanece
+fail-closed, sem dados fictícios, callbacks bancários ou operações. Esta preparação não inicia
+nem aprova a Fase 6.
 
 ## Dependências
 
@@ -1151,25 +1162,13 @@ Antes da aprovação da Fase 3, nenhum novo canal financeiro deve ser liberado e
 
 ## 11. Próxima tarefa oficial
 
-```text
-Concluir os bloqueadores B0-01 a B0-10 e submeter a Fase 0 a nova revisão estática.
-```
+Planejar a Fase 2 somente pelo prompt autorizado. Nenhuma funcionalidade da Fase 2 foi implementada nesta atualização documental.
 
-Resultado esperado:
+Resultado atual:
 
 ```text
 Fase 0: [S] Validada estaticamente
-Fase 1: [ ] Liberada para execução em staging
+Fase 1: [R] Aprovada em runtime
 ```
 
-Se algum bloqueador permanecer:
-
-```text
-Fase 0: [!] Bloqueada
-Bloqueador:
-Impacto:
-Correção necessária:
-Testes afetados:
-```
-
-O projeto não deve iniciar a identidade pública ou expandir a API enquanto a base aceitar adulteração de canal, ATM arbitrário ou operação sem revalidação adequada.
+A aprovação runtime foi registrada a partir dos resultados fornecidos pelo usuário após execução manual no FiveM, sem anexos adicionais e sem falhas pendentes conhecidas.

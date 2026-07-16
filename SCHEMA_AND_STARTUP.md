@@ -34,9 +34,14 @@ O export server-side `GetReadiness` devolve `ready`, `error`, `degraded`, `warni
 - `sql/000_mz_bank_schema_migrations.sql`: registro de versões.
 - `sql/001_mz_bank_cards.sql`: única definição de `mz_bank_cards`.
 - `sql/002_mz_bank_legacy_reports.sql`: relatórios persistentes do fluxo legado.
+- `sql/003_mz_bank_accounts.sql`: identidade bancária pública sem saldo; uma conta pessoal por `citizenid` e rota pública única.
 - `server/migrations.lua`: ordena, aplica idempotentemente e valida; não contém uma segunda definição de `mz_bank_cards`.
 - `server/repository.lua`: somente consultas e comandos de dados; não cria schema.
 
-O runner usa `CREATE TABLE IF NOT EXISTS`, registra cada versão somente depois de validar o objeto criado e aceita reexecução. Ele não contém `DROP`, `TRUNCATE`, `DELETE` nem alteração destrutiva. Uma versão desconhecida mais nova, conflito de nome, arquivo ausente, coluna/índice incompatível ou erro SQL mantém o serviço indisponível e produz erro explícito no console/readiness.
+O schema esperado atual é a versão `3`. O runner usa `CREATE TABLE IF NOT EXISTS`, registra cada versão somente depois de validar o objeto criado e aceita reexecução. Ele valida também o charset `utf8mb4`, nulabilidade, defaults e índices de `mz_bank_accounts`. O runner não contém `DROP`, `TRUNCATE`, `DELETE` nem alteração destrutiva. Uma versão desconhecida mais nova, conflito de nome, arquivo ausente, coluna/índice incompatível ou erro SQL mantém o serviço indisponível e produz erro explícito no console/readiness.
+
+`mz_bank_accounts` não possui saldo e não tem foreign key nesta versão. O schema real do `mz_core` confirma `citizenid VARCHAR(32)`, mas não fixa engine/charset/collation no DDL de `mz_players`; por isso a compatibilidade necessária para FK não é garantida. Nenhuma migration modifica `mz_player_accounts` ou tabelas legadas.
+
+Depois de aplicar a versão `3`, não use um pacote que espere somente a versão `2`: o runner falhará fechado com `schema_newer_than_resource`. O rollback funcional deve manter a tabela e usar pacote compatível com schema v3, com a feature pública ainda desligada.
 
 Não execute os SQLs manualmente fora do fluxo sem registrar e conferir a versão. Antes de um restart real, faça backup e valide em staging. Esta implementação não executou migrations contra o banco de runtime.

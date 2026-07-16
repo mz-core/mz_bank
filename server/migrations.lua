@@ -1,6 +1,6 @@
 MZBankMigrations = {}
 
-local EXPECTED_VERSION = 2
+local EXPECTED_VERSION = 3
 local status = {
   ready = false,
   currentVersion = 0,
@@ -10,7 +10,8 @@ local status = {
 
 local migrations = {
   { version = 1, name = 'mz_bank_cards', file = 'sql/001_mz_bank_cards.sql' },
-  { version = 2, name = 'mz_bank_legacy_reports', file = 'sql/002_mz_bank_legacy_reports.sql' }
+  { version = 2, name = 'mz_bank_legacy_reports', file = 'sql/002_mz_bank_legacy_reports.sql' },
+  { version = 3, name = 'mz_bank_accounts', file = 'sql/003_mz_bank_accounts.sql' }
 }
 
 -- Contrato de readiness somente leitura. A definição/evolução executável das
@@ -54,6 +55,38 @@ local expectedSchemas = {
       uq_mz_bank_legacy_reports_uid = 'report_uid',
       idx_mz_bank_legacy_reports_status_created = 'status,created_at'
     }
+  },
+  mz_bank_accounts = {
+    charset = 'utf8mb4',
+    columns = {
+      id = 'bigint', citizenid = 'varchar', branch = 'char', account_number = 'char',
+      check_digit = 'char', account_type = 'varchar', status = 'varchar',
+      created_at = 'timestamp', updated_at = 'timestamp', closed_at = 'timestamp',
+      metadata_json = 'longtext'
+    },
+    lengths = {
+      citizenid = 32, branch = 4, account_number = 8, check_digit = 1,
+      account_type = 24, status = 16
+    },
+    nullable = {
+      id = false, citizenid = false, branch = false, account_number = false,
+      check_digit = false, account_type = false, status = false,
+      created_at = false, updated_at = false, closed_at = true, metadata_json = true
+    },
+    defaults = {
+      branch = '0001', account_type = 'personal', status = 'active'
+    },
+    unsigned = { id = true },
+    extraContains = { updated_at = 'on update current_timestamp' },
+    autoIncrement = 'id',
+    indexes = {
+      PRIMARY = 'id',
+      uq_mz_bank_accounts_owner_type = 'citizenid,account_type',
+      uq_mz_bank_accounts_route = 'branch,account_number',
+      idx_mz_bank_accounts_route_lookup = 'branch,account_number,check_digit,account_type',
+      idx_mz_bank_accounts_owner_status = 'citizenid,status',
+      idx_mz_bank_accounts_status = 'status'
+    }
   }
 }
 
@@ -80,10 +113,26 @@ local function loadSql(path)
   return sql
 end
 
+local function normalizeColumnDefault(value)
+  if value == nil then return nil end
+
+  local normalized = tostring(value)
+  local first = normalized:sub(1, 1)
+  local last = normalized:sub(-1)
+  if #normalized >= 2
+    and ((first == "'" and last == "'") or (first == '"' and last == '"')) then
+    normalized = normalized:sub(2, -2)
+    normalized = first == "'"
+      and normalized:gsub("''", "'")
+      or normalized:gsub('""', '"')
+  end
+  return normalized
+end
+
 local function verifyTable(tableName)
   local definition = expectedSchemas[tableName]
   local tableRow = MySQL.single.await([[
-    SELECT ENGINE AS engine
+    SELECT ENGINE AS engine, TABLE_COLLATION AS table_collation
     FROM information_schema.tables
     WHERE table_schema = DATABASE() AND table_name = ?
     LIMIT 1
@@ -91,9 +140,16 @@ local function verifyTable(tableName)
   if not tableRow or tostring(tableRow.engine or ''):lower() ~= 'innodb' then
     return false, ('schema_invalid:%s:engine'):format(tableName)
   end
+  if definition.charset then
+    local actualCharset = tostring(tableRow.table_collation or ''):lower():match('^([^_]+)')
+    if actualCharset ~= definition.charset then
+      return false, ('schema_invalid:%s:charset'):format(tableName)
+    end
+  end
 
   local columns = MySQL.query.await([[
-    SELECT column_name, data_type, character_maximum_length, extra
+    SELECT column_name, data_type, column_type, character_maximum_length,
+           is_nullable, column_default, extra
     FROM information_schema.columns
     WHERE table_schema = DATABASE() AND table_name = ?
   ]], { tableName }) or {}
@@ -101,7 +157,10 @@ local function verifyTable(tableName)
   for _, row in ipairs(columns) do
     actualColumns[tostring(row.column_name)] = {
       dataType = tostring(row.data_type):lower(),
+      columnType = tostring(row.column_type or ''):lower(),
       length = tonumber(row.character_maximum_length),
+      nullable = tostring(row.is_nullable or ''):upper() == 'YES',
+      default = row.column_default,
       extra = tostring(row.extra or ''):lower()
     }
   end
@@ -113,6 +172,23 @@ local function verifyTable(tableName)
     local expectedLength = definition.lengths and definition.lengths[columnName]
     if expectedLength and actual.length ~= expectedLength then
       return false, ('schema_invalid:%s:column_length:%s'):format(tableName, columnName)
+    end
+    local expectedNullable = definition.nullable and definition.nullable[columnName]
+    if expectedNullable ~= nil and actual.nullable ~= expectedNullable then
+      return false, ('schema_invalid:%s:nullable:%s'):format(tableName, columnName)
+    end
+    local expectedDefault = definition.defaults and definition.defaults[columnName]
+    if expectedDefault ~= nil
+      and normalizeColumnDefault(actual.default) ~= normalizeColumnDefault(expectedDefault) then
+      return false, ('schema_invalid:%s:default:%s'):format(tableName, columnName)
+    end
+    if definition.unsigned and definition.unsigned[columnName]
+      and not actual.columnType:find('unsigned', 1, true) then
+      return false, ('schema_invalid:%s:unsigned:%s'):format(tableName, columnName)
+    end
+    local expectedExtra = definition.extraContains and definition.extraContains[columnName]
+    if expectedExtra and not actual.extra:find(expectedExtra, 1, true) then
+      return false, ('schema_invalid:%s:extra:%s'):format(tableName, columnName)
     end
   end
   if definition.autoIncrement then
@@ -151,6 +227,15 @@ end
 function MZBankMigrations.run()
   status.ready = false
   status.error = 'running'
+
+  if type(MZBankAccountIdentity) ~= 'table'
+    or type(MZBankAccountIdentity.ValidateConfiguration) ~= 'function' then
+    return fail('public_account_identity_unavailable')
+  end
+  local configValid, configError = MZBankAccountIdentity.ValidateConfiguration()
+  if configValid ~= true then
+    return fail(('public_account_config_invalid:%s'):format(tostring(configError or 'unknown')))
+  end
 
   MySQL.query.await(loadSql('sql/000_mz_bank_schema_migrations.sql'))
   local registryValid, registryError = verifyTable('mz_bank_schema_migrations')
