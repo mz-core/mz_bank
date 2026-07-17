@@ -147,7 +147,7 @@ Regras:
 |---|---|---|
 | 0 — Estabilização da base atual | `[S]` | B0-01 a B0-10 validados estaticamente; runtime posterior registrado |
 | 1 — Validação runtime crítica | `[R]` | Testes manuais no FiveM aprovados conforme resultado fornecido pelo usuário |
-| 2 — Identidade bancária pública | `[~]` | P2-A a P2-G aprovados em runtime; P2-H pendente |
+| 2 — Identidade bancária pública | `[R]` | P2-A a P2-H aprovados em runtime; 109 casos aprovados e zero falhas conhecidas |
 | 3 — Idempotência, outbox e auditoria | `[ ]` | Ledger atual é best effort |
 | 4 — API bancária compartilhada | `[~]` | Existem exports parciais, ainda sem autenticação completa de canal |
 | 5 — Cartão bancário completo | `[~]` | Emissão, bloqueio e substituição existem parcialmente |
@@ -473,7 +473,7 @@ Fase 1: [R] Aprovada em runtime
 
 # Fase 2 — Identidade bancária pública
 
-**Status:** `[~] Em implementação`
+**Status:** `[R] Aprovada em runtime`
 
 **Lote P2-A:** `[R] Aprovado em runtime` — 27 testes executáveis aprovados manualmente no MySQL/FiveM staging conforme resultado fornecido pelo usuário; 1 caso não aplicável por ausência deliberada do gerador. Migration v3, schema/readiness e política pura de formato/DV aprovados; criação, backfill, resolução e cutover ainda não iniciados.
 
@@ -487,7 +487,9 @@ Fase 1: [R] Aprovada em runtime
 
 **Lote P2-F:** `[R] Aprovado em runtime` — 16 de 16 casos aprovados no FiveM staging conforme resultados fornecidos pelo usuário. Runner interno 14/14, transferência real de R$1, replay, conflito, persistência, cache, correlationId, estados, concorrência, falhas, privacidade, restart e regressão foram confirmados. Zero falhas e zero bloqueados; runner desativado. Não houve timeout SQL destrutivo real, conforme limitação registrada. Na aprovação isolada deste lote, o P2-G ainda não havia sido implementado.
 
-**Lote P2-G:** `[R] Aprovado em runtime` — 15 de 15 casos aprovados manualmente no FiveM staging conforme resultado fornecido pelo usuário. O cutover para agência/conta/DV, resolução privada, confirmação por token, transferência, idempotência, comprovante, privacidade, estados, restart e regressão física/financeira foram confirmados. Zero falhas e zero bloqueados; a Fase 2 continua `[~]` até o P2-H.
+**Lote P2-G:** `[R] Aprovado em runtime` — 15 de 15 casos aprovados manualmente no FiveM staging conforme resultado fornecido pelo usuário. O cutover para agência/conta/DV, resolução privada, confirmação por token, transferência, idempotência, comprovante, privacidade, estados, restart e regressão física/financeira foram confirmados. Zero falhas e zero bloqueados; na aprovação isolada desse lote, a Fase 2 permaneceu `[~]` até a revisão P2-H.
+
+**Lote P2-H:** `[R] Aprovado em runtime` — a revisão final encontrou e corrigiu a dependência da convar transitória e a ausência dos gates de estado em saque/depósito. Os 3 testes delta foram executados manualmente no FiveM staging e aprovados conforme confirmação do usuário. Zero falhas e zero bloqueados; a Fase 2 foi aprovada em runtime.
 
 ## Objetivo
 
@@ -550,14 +552,14 @@ metadata_json
 
 ## Critérios de aprovação
 
-- [ ] Conta duplicada é impossível.
-- [ ] Repetir criação devolve a mesma conta.
-- [ ] `citizenid` não aparece na interface pública.
-- [ ] Server ID não é usado como conta.
-- [ ] Conta persiste após reconnect e restart.
-- [ ] Estados da conta são aplicados no servidor.
-- [ ] Enumeração não expõe dados pessoais.
-- [ ] Transferência por conta é aprovada em runtime.
+- [x] Conta duplicada é impossível.
+- [x] Repetir criação devolve a mesma conta.
+- [x] `citizenid` não aparece na interface pública.
+- [x] Server ID não é usado como conta.
+- [x] Conta persiste após reconnect e restart.
+- [x] Estados da conta são aplicados no servidor.
+- [x] Enumeração não expõe dados pessoais.
+- [x] Transferência por conta é aprovada em runtime.
 
 ---
 
@@ -1172,14 +1174,14 @@ Antes da aprovação da Fase 3, nenhum novo canal financeiro deve ser liberado e
 
 ## 11. Próxima tarefa oficial
 
-Próxima tarefa oficial: executar somente o P2-H — revisão estática independente, regressão integral e decisão final da Fase 2. Não implementar phone nesta etapa.
+Próxima tarefa oficial: preparar somente a Fase 3 — idempotência, outbox e auditoria — conforme os gates do roadmap. Não implementar phone nesta etapa.
 
 Resultado atual:
 
 ```text
 Fase 0: [S] Validada estaticamente
 Fase 1: [R] Aprovada em runtime
-Fase 2: [~] Em implementação
+Fase 2: [R] Aprovada em runtime
 P2-A: [R]
 P2-B: [R]
 P2-C: [R]
@@ -1187,7 +1189,7 @@ P2-D: [R]
 P2-E: [R]
 P2-F: [R]
 P2-G: [R] Aprovado em runtime
-P2-H: NÃO IMPLEMENTADO
+P2-H: [R] Aprovado em runtime
 ```
 
 A aprovação runtime foi registrada a partir dos resultados fornecidos pelo usuário após execução manual no FiveM, sem anexos adicionais e sem falhas pendentes conhecidas.

@@ -798,12 +798,41 @@ local function confirmedFinancialResponse(source, token, session, operation, amo
   return out
 end
 
+local function publicOriginError(account)
+  if type(account) ~= 'table' then return 'public_account_unavailable' end
+  local status = tostring(account.status or '')
+  if status == 'blocked' then return 'account_blocked' end
+  if status == 'frozen' then return 'account_frozen' end
+  if status == 'closed' then return 'account_closed' end
+  return 'public_account_unavailable'
+end
+
+local function validatePublicOriginCapability(source, capability)
+  if MZBankAccountService.IsEnabled() ~= true then return true end
+  local identity = MZBankBridge.ResolvePlayer(source, false)
+  if not identity then return false, 'player_not_loaded' end
+
+  local callOk, ensured = pcall(MZBankAccountService.EnsurePersonalAccount, {
+    citizenid = identity.citizenid
+  })
+  if not callOk or type(ensured) ~= 'table' or ensured.ok ~= true
+      or type(ensured.account) ~= 'table' then
+    return false, 'public_account_unavailable'
+  end
+  if MZBankAccountService.CanAccountPerform(ensured.account.status, capability) ~= true then
+    return false, publicOriginError(ensured.account)
+  end
+  return true
+end
+
 function MZBankService.Withdraw(source, token, rawAmount, rawIdempotencyKey)
   local idempotencyKey, idempotencyErr = validateIdempotencyKey(rawIdempotencyKey)
   if not idempotencyKey then return response(false, idempotencyErr) end
   return runOperation(source, token, 'withdraw', idempotencyKey, function(session)
     local amount, amountErr = validateAmount(rawAmount, session.channel, 'withdraw')
     if not amount then return response(false, amountErr) end
+    local allowed, accountError = validatePublicOriginCapability(source, 'withdraw')
+    if not allowed then return response(false, accountError) end
     local result = MZBankBridge.TransferBetweenOwnAccounts(
       source,
       'bank',
@@ -827,6 +856,8 @@ function MZBankService.Deposit(source, token, rawAmount, rawIdempotencyKey)
   return runOperation(source, token, 'deposit', idempotencyKey, function(session)
     local amount, amountErr = validateAmount(rawAmount, session.channel, 'deposit')
     if not amount then return response(false, amountErr) end
+    local allowed, accountError = validatePublicOriginCapability(source, 'deposit')
+    if not allowed then return response(false, accountError) end
     local result = MZBankBridge.TransferBetweenOwnAccounts(
       source,
       'wallet',
@@ -842,15 +873,6 @@ function MZBankService.Deposit(source, token, rawAmount, rawIdempotencyKey)
     })
     return confirmedFinancialResponse(source, token, session, 'deposit', amount, 0, result)
   end)
-end
-
-local function publicOriginError(account)
-  if type(account) ~= 'table' then return 'public_account_unavailable' end
-  local status = tostring(account.status or '')
-  if status == 'blocked' then return 'account_blocked' end
-  if status == 'frozen' then return 'account_frozen' end
-  if status == 'closed' then return 'account_closed' end
-  return 'public_account_unavailable'
 end
 
 local function isAmbiguousPublicTransferError(errorCode)

@@ -40,6 +40,13 @@ PIN esta preparado no schema (`pin_hash` nullable), mas nao foi implementado sem
 | Emissao/substituicao | nao | sim | — |
 | Exige item `bank_card` | configuravel | configuravel | — |
 
-O ATM atual resolve somente destinatario por server ID e exige que ele esteja online. O callback nao aceita tipo escolhido pelo client; `citizenid`, `account_number`, `phone` e `pix_key` nao fazem parte do contrato fisico.
+ATM e agencia resolvem o destinatario exclusivamente por agencia, conta e digito. A NUI recebe nome
+parcial, rota mascarada e token temporario para confirmacao; `citizenid`, source e IDs internos nao
+fazem parte do contrato fisico. O destinatario permanece online nesta fase. `phone` e `pix_key` ainda
+nao fazem parte deste canal.
+
+A identidade publica fica ativa por padrao. `blocked` permite leitura, deposito e recebimento, mas
+nega saque e transferencia; `frozen` permite somente leitura; `closed` fica fora do fluxo normal e
+sua rota nunca e reutilizada. Esses estados limitam o canal `mz_bank` e nao alteram saldo diretamente.
 
 Consulte `INTEGRATION.md`, `TEST_PLAN.md` e `LEGACY_BANK_TABLES.md` para contratos e operacao.

@@ -32,13 +32,13 @@ Config.StatementLimit = 15
 Config.Debug = false
 Config.DebugAce = 'group.mz_owner'
 
--- Identidade bancaria publica (Fase 2). A feature permanece desligada por
--- padrao e pode ser ativada temporariamente em staging pela convar abaixo.
--- P2-C cria a conta somente no overview fisico ja autenticado. P2-D concluiu
--- o backfill; P2-E adiciona resolucao privada e P2-F consome o token somente
--- no contrato server-side. O cutover da NUI continua fora do escopo.
+-- Identidade bancaria publica (Fase 2). A feature aprovada permanece ativa
+-- sem depender de convar transitoria apos reboot. A convar e mantida apenas
+-- para compatibilidade dos ambientes de staging anteriores.
+-- P2-C cria a conta no overview fisico autenticado, P2-D fornece backfill,
+-- P2-E/P2-F resolvem e transferem e P2-G conclui o cutover da NUI.
 Config.PublicAccount = {
-  Enabled = false,
+  Enabled = true,
   StagingEnableConvar = 'mz_bank_public_account_p2c',
   DefaultBranch = '0001',
   AccountNumberLength = 8,
