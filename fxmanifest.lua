@@ -19,13 +19,21 @@ client_scripts {
 
 server_scripts {
   '@oxmysql/lib/MySQL.lua',
+  'server/account_rng.js',
   'bridge/server.lua',
   'server/account_identity.lua',
   'server/migrations.lua',
   'server/repository.lua',
+  'server/account_service.lua',
+  'server/account_resolution.lua',
+  'server/account_backfill.lua',
   'server/service.lua',
   'server/legacy.lua',
-  'server/main.lua'
+  'server/main.lua',
+  'server/p2b_runtime_runner.lua',
+  'server/p2d_runtime_runner.lua',
+  'server/p2e_runtime_runner.lua',
+  'server/p2f_runtime_runner.lua'
 }
 
 ui_page 'html/index.html'

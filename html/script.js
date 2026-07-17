@@ -30,6 +30,9 @@ const state = {
     channel: 'atm',
     cardInserted: false,
     pendingOperations: loadPendingOperations(),
+    transferRoute: { branch: '0001', accountNumber: '', checkDigit: '' },
+    transferPreview: null,
+    transferReceipt: null,
 };
 
 let audioCtx = null;
@@ -75,10 +78,21 @@ const SOFT = {
         7: { label: 'Voltar', danger: true, act: () => show('menu') },
     },
     transfer: {
-        0: { label: 'Editar ID', act: () => setFocus('target') },
-        1: { label: 'Editar valor', act: () => setFocus('amount') },
-        4: { label: 'Enviar', act: () => confirmAction('transfer') },
+        0: { label: 'Agencia', act: () => setFocus('branch') },
+        1: { label: 'Conta', act: () => setFocus('account') },
+        2: { label: 'Digito', act: () => setFocus('digit') },
+        3: { label: 'Valor', act: () => setFocus('amount') },
+        4: { label: 'Continuar', act: () => resolveTransferRecipient() },
         7: { label: 'Voltar', danger: true, act: () => show('menu') },
+    },
+    'transfer-confirm': {
+        4: { label: 'Confirmar', act: () => confirmPublicTransfer() },
+        6: { label: 'Corrigir', act: () => editTransfer() },
+        7: { label: 'Cancelar', danger: true, act: () => show('menu') },
+    },
+    'transfer-receipt': {
+        4: { label: 'Concluir', act: () => finishTransfer() },
+        7: { label: 'Menu', act: () => finishTransfer() },
     },
     statement: { 7: { label: 'Voltar', act: () => show('menu') } },
 };
@@ -149,7 +163,9 @@ function show(viewName) {
     renderSoftKeys(viewName);
     if (viewName === 'balance') renderBalance();
     if (viewName === 'statement') renderStatement();
-    if (viewName === 'transfer') setFocus('target');
+    if (viewName === 'transfer') setFocus('account');
+    if (viewName === 'transfer-confirm') renderTransferConfirmation();
+    if (viewName === 'transfer-receipt') renderTransferReceipt();
     beep(520, 40);
 }
 
@@ -227,7 +243,7 @@ function applyResponse(result, successToMenu = false) {
     if (successToMenu) {
         state.amounts = { withdraw: '', deposit: '', transfer: '' };
         ['withdraw', 'deposit', 'transfer'].forEach(renderAmount);
-        document.getElementById('transfer-target').value = '';
+        resetTransfer();
         show('menu');
     }
     return true;
@@ -235,8 +251,16 @@ function applyResponse(result, successToMenu = false) {
 
 function setFocus(which) {
     state.focus = which;
-    const input = document.getElementById('transfer-target');
-    if (input) input.classList.toggle('focus-field', which === 'target');
+    const fields = {
+        branch: document.getElementById('transfer-branch'),
+        account: document.getElementById('transfer-account'),
+        digit: document.getElementById('transfer-digit'),
+    };
+    Object.entries(fields).forEach(([name, input]) => {
+        if (input) input.classList.toggle('focus-field', which === name);
+    });
+    const amount = document.querySelector('[data-view="transfer"] .amount-display');
+    if (amount) amount.classList.toggle('focus-field', which === 'amount');
 }
 
 function currentAmountTarget() {
@@ -245,9 +269,11 @@ function currentAmountTarget() {
 
 function typeDigit(digit) {
     if (state.busy) return;
-    if (state.view === 'transfer' && state.focus === 'target') {
-        const input = document.getElementById('transfer-target');
-        input.value = (input.value + digit).slice(0, 6);
+    const routeField = focusedRouteField();
+    if (routeField) {
+        const limits = { branch: 4, account: 8, digit: 1 };
+        routeField.input.value = (routeField.input.value + digit).slice(0, limits[routeField.name]);
+        syncTransferRoute();
         return;
     }
     const target = currentAmountTarget();
@@ -260,9 +286,10 @@ function typeDigit(digit) {
 
 function backspace() {
     if (state.busy) return;
-    if (state.view === 'transfer' && state.focus === 'target') {
-        const input = document.getElementById('transfer-target');
-        input.value = input.value.slice(0, -1);
+    const routeField = focusedRouteField();
+    if (routeField) {
+        routeField.input.value = routeField.input.value.slice(0, -1);
+        syncTransferRoute();
         return;
     }
     const target = currentAmountTarget();
@@ -273,8 +300,10 @@ function backspace() {
 
 function clearAmount() {
     if (state.busy) return;
-    if (state.view === 'transfer' && state.focus === 'target') {
-        document.getElementById('transfer-target').value = '';
+    const routeField = focusedRouteField();
+    if (routeField) {
+        routeField.input.value = '';
+        syncTransferRoute();
         return;
     }
     const target = currentAmountTarget();
@@ -347,7 +376,9 @@ function operationFingerprint(kind, payload) {
     return JSON.stringify([
         kind,
         payload.amount,
-        kind === 'transfer' ? String(payload.recipientValue || '') : '',
+        kind === 'transfer' ? String(payload.branch || '') : '',
+        kind === 'transfer' ? String(payload.accountNumber || '') : '',
+        kind === 'transfer' ? String(payload.checkDigit || '') : '',
     ]);
 }
 
@@ -356,10 +387,7 @@ async function confirmAction(kind) {
     const amount = parseInt(state.amounts[kind] || '0', 10);
     if (!amount || amount <= 0) return toast('Valor invalido', 'error');
     const payload = { amount };
-    if (kind === 'transfer') {
-        payload.recipientValue = document.getElementById('transfer-target').value;
-        if (!payload.recipientValue) return toast('Informe o ID de destino', 'error');
-    }
+    if (kind === 'transfer') return resolveTransferRecipient();
     const fingerprint = operationFingerprint(kind, payload);
     const pending = state.pendingOperations[kind];
     if (!pending || pending.fingerprint !== fingerprint) {
@@ -379,6 +407,150 @@ async function confirmAction(kind) {
     } finally {
         processing(false);
     }
+}
+
+function focusedRouteField() {
+    if (state.view !== 'transfer') return null;
+    const ids = { branch: 'transfer-branch', account: 'transfer-account', digit: 'transfer-digit' };
+    const id = ids[state.focus];
+    return id ? { name: state.focus, input: document.getElementById(id) } : null;
+}
+
+function syncTransferRoute() {
+    state.transferRoute = {
+        branch: document.getElementById('transfer-branch').value,
+        accountNumber: document.getElementById('transfer-account').value,
+        checkDigit: document.getElementById('transfer-digit').value,
+    };
+    state.transferPreview = null;
+}
+
+function transferInput() {
+    syncTransferRoute();
+    const amount = parseInt(state.amounts.transfer || '0', 10);
+    return { ...state.transferRoute, amount };
+}
+
+function validTransferInput(payload) {
+    if (!/^\d{4}$/.test(payload.branch)) return 'Informe uma agencia com 4 digitos';
+    if (!/^\d{8}$/.test(payload.accountNumber) || payload.accountNumber === '00000000') return 'Informe uma conta com 8 digitos';
+    if (!/^\d$/.test(payload.checkDigit)) return 'Informe o digito da conta';
+    if (!payload.amount || payload.amount <= 0) return 'Valor invalido';
+    return null;
+}
+
+async function resolveTransferRecipient() {
+    if (state.busy) return;
+    const payload = transferInput();
+    const inputError = validTransferInput(payload);
+    if (inputError) return toast(inputError, 'error');
+
+    processing(true);
+    try {
+        const result = await nui('resolveTransferRecipient', {
+            branch: payload.branch,
+            accountNumber: payload.accountNumber,
+            checkDigit: payload.checkDigit,
+        });
+        if (!result || result.ok !== true || !result.data || !result.data.resolutionToken || !result.data.recipient) {
+            return applyResponse(result);
+        }
+        state.transferPreview = {
+            route: { ...state.transferRoute },
+            amount: payload.amount,
+            recipient: result.data.recipient,
+            resolutionToken: result.data.resolutionToken,
+            expiresAt: Date.now() + (Number(result.data.expiresIn || 0) * 1000),
+        };
+        show('transfer-confirm');
+    } finally {
+        processing(false);
+    }
+}
+
+function renderTransferConfirmation() {
+    const preview = state.transferPreview;
+    if (!preview) return;
+    document.getElementById('confirm-recipient').textContent = preview.recipient.displayName || 'Destinatario';
+    document.getElementById('confirm-route').textContent = `${preview.recipient.branch || preview.route.branch} / ${preview.recipient.accountMasked || '****'} `;
+    document.getElementById('confirm-amount').textContent = formatMoney(preview.amount);
+}
+
+function editTransfer() {
+    state.transferPreview = null;
+    show('transfer');
+}
+
+async function confirmPublicTransfer() {
+    const preview = state.transferPreview;
+    if (state.busy || !preview) return editTransfer();
+    if (Date.now() >= preview.expiresAt) {
+        toast('Confirmacao expirada. Consulte a conta novamente.', 'error');
+        return editTransfer();
+    }
+    const fingerprintPayload = { ...preview.route, amount: preview.amount };
+    const fingerprint = operationFingerprint('transfer', fingerprintPayload);
+    const pending = state.pendingOperations.transfer;
+    if (!pending || pending.fingerprint !== fingerprint) {
+        state.pendingOperations.transfer = { fingerprint, key: createIdempotencyKey() };
+        savePendingOperations(state.pendingOperations);
+    }
+
+    processing(true);
+    try {
+        const result = await nui('transfer', {
+            resolutionToken: preview.resolutionToken,
+            amount: preview.amount,
+            idempotencyKey: state.pendingOperations.transfer.key,
+        });
+        if (result && (result.ok === true || result.error === 'idempotency_conflict' || result.error === 'invalid_idempotency_key')) {
+            delete state.pendingOperations.transfer;
+            savePendingOperations(state.pendingOperations);
+        }
+        if (!result || result.ok !== true) {
+            applyResponse(result);
+            if (result && ['invalid_resolution_token', 'recipient_unavailable'].includes(result.error)) editTransfer();
+            return;
+        }
+        if (result.data) applyData(result.data);
+        state.transferReceipt = {
+            amount: Number((result.data && result.data.amount) || preview.amount),
+            recipient: preview.recipient,
+            route: preview.route,
+            correlationId: String(result.correlationId || (result.data && result.data.correlationId) || '-'),
+            replayed: result.replayed === true || (result.data && result.data.replayed === true),
+        };
+        state.transferPreview = null;
+        if (result.message) toast(result.message, 'success');
+        show('transfer-receipt');
+    } finally {
+        processing(false);
+    }
+}
+
+function renderTransferReceipt() {
+    const receipt = state.transferReceipt;
+    if (!receipt) return;
+    document.getElementById('receipt-amount').textContent = formatMoney(receipt.amount);
+    document.getElementById('receipt-recipient').textContent = receipt.recipient.displayName || 'Destinatario';
+    document.getElementById('receipt-route').textContent = `${receipt.recipient.branch || receipt.route.branch} / ${receipt.recipient.accountMasked || '****'}`;
+    document.getElementById('receipt-reference').textContent = receipt.correlationId;
+}
+
+function resetTransfer() {
+    state.transferRoute = { branch: '0001', accountNumber: '', checkDigit: '' };
+    state.transferPreview = null;
+    state.transferReceipt = null;
+    document.getElementById('transfer-branch').value = '0001';
+    document.getElementById('transfer-account').value = '';
+    document.getElementById('transfer-digit').value = '';
+}
+
+function finishTransfer() {
+    state.amounts.transfer = '';
+    renderAmount('transfer');
+    resetTransfer();
+    show('menu');
 }
 
 let toastTimer = null;
@@ -414,6 +586,7 @@ function closeApp() {
     processing(false);
     app.classList.add('hidden');
     state.amounts = { withdraw: '', deposit: '', transfer: '' };
+    resetTransfer();
     state.cardInserted = false;
     setCardState('waiting');
 }
@@ -455,6 +628,8 @@ document.addEventListener('keydown', (event) => {
     if (event.key >= '0' && event.key <= '9') typeDigit(event.key);
     else if (event.key === 'Backspace') { event.preventDefault(); backspace(); }
     else if (event.key === 'Enter' && !state.busy) {
+        if (state.view === 'transfer-confirm') return confirmPublicTransfer();
+        if (state.view === 'transfer-receipt') return finishTransfer();
         const target = currentAmountTarget();
         if (target) confirmAction(target);
         else if (state.view === 'welcome') enterCard();
@@ -474,13 +649,18 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (value === 'clear') clearAmount();
             else if (value === 'back') backspace();
             else if (value === 'enter') {
+                if (state.view === 'transfer-confirm') return confirmPublicTransfer();
+                if (state.view === 'transfer-receipt') return finishTransfer();
                 const target = currentAmountTarget();
                 if (target) confirmAction(target);
                 else if (state.view === 'welcome') enterCard();
             } else typeDigit(value);
         });
     });
-    document.getElementById('transfer-target').addEventListener('click', () => setFocus('target'));
+    document.getElementById('transfer-branch').addEventListener('click', () => setFocus('branch'));
+    document.getElementById('transfer-account').addEventListener('click', () => setFocus('account'));
+    document.getElementById('transfer-digit').addEventListener('click', () => setFocus('digit'));
+    document.querySelector('[data-view="transfer"] .amount-display').addEventListener('click', () => setFocus('amount'));
     document.getElementById('card-slot').addEventListener('click', () => enterCard());
     if (IS_BROWSER) openApp({ bankName: 'Banco Central', currencySymbol: 'R$', channel: 'atm' });
 });
@@ -499,6 +679,13 @@ async function mockNui(callback, body) {
     await new Promise((resolve) => setTimeout(resolve, 350));
     if (callback === 'close') return { ok: true };
     if (callback === 'authenticate' || callback === 'refresh') return { ok: true, data };
+    if (callback === 'resolveTransferRecipient') {
+        if (body.branch !== '0001' || !/^\d{8}$/.test(body.accountNumber || '') || !/^\d$/.test(body.checkDigit || '')) {
+            return { ok: false, error: 'recipient_invalid', message: 'Dados bancarios invalidos.' };
+        }
+        mockNui.resolutionToken = `mock_${Date.now()}`;
+        return { ok: true, data: { resolutionToken: mockNui.resolutionToken, expiresIn: 60, recipient: { displayName: 'Maria P.', branch: '0001', accountMasked: `****${body.accountNumber.slice(-4)}-${body.checkDigit}`, accountTypeLabel: 'Conta pessoal' } } };
+    }
     if (callback === 'withdraw') {
         if (data.balance < body.amount) return { ok: false, error: 'not_enough_bank', message: 'Saldo bancario insuficiente.' };
         data.balance -= body.amount; data.cash += body.amount;
@@ -508,9 +695,11 @@ async function mockNui(callback, body) {
         data.balance += body.amount; data.cash -= body.amount;
         data.statement.unshift({ type: 'atm_deposit', amount: body.amount, created_at: Date.now() });
     } else if (callback === 'transfer') {
+        if (!body.resolutionToken || body.resolutionToken !== mockNui.resolutionToken) return { ok: false, error: 'invalid_resolution_token', message: 'Confirmacao expirada.' };
         if (data.balance < body.amount) return { ok: false, error: 'not_enough_bank', message: 'Saldo bancario insuficiente.' };
         data.balance -= body.amount;
         data.statement.unshift({ type: 'atm_transfer', amount: -body.amount, created_at: Date.now() });
+        return { ok: true, message: 'Operacao realizada com sucesso.', correlationId: `mock-ref-${Date.now()}`, data: { ...data, amount: body.amount } };
     }
     return { ok: true, message: 'Operacao realizada com sucesso.', data };
 }

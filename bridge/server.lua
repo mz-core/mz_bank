@@ -137,6 +137,30 @@ function MZBankBridge.ResolvePlayer(source, ensureLoaded)
   }, loadState
 end
 
+function MZBankBridge.ResolvePlayerByCitizenId(citizenid)
+  citizenid = trim(citizenid)
+  if citizenid == '' or #citizenid > 32 then return nil, 'invalid_citizenid' end
+
+  local ok, player = pcall(function()
+    return exports['mz_core']:GetPlayerByCitizenId(citizenid)
+  end)
+  if not ok then
+    print(('[mz_bank][bridge] mz_core export GetPlayerByCitizenId failed: %s'):format(tostring(player)))
+    return nil, 'bank_unavailable'
+  end
+  if type(player) ~= 'table' or trim(player.citizenid) ~= citizenid then
+    return nil, 'player_not_loaded'
+  end
+
+  local source = tonumber(player.source)
+  if not source or source <= 0 then return nil, 'player_not_loaded' end
+  local identity, identityError = MZBankBridge.ResolvePlayer(source, false)
+  if not identity or identity.citizenid ~= citizenid then
+    return nil, identityError or 'player_not_loaded'
+  end
+  return identity
+end
+
 function MZBankBridge.GetCitizenId(source)
   local identity = MZBankBridge.ResolvePlayer(source, false)
   return identity and identity.citizenid or nil

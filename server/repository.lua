@@ -2,6 +2,10 @@ MZBankRepository = {}
 
 local publicAccountPolicy = type(Config.PublicAccount) == 'table' and Config.PublicAccount or {}
 local PERSONAL_ACCOUNT_TYPE = tostring(publicAccountPolicy.AccountType or '')
+local SECURE_RANDOM_BYTES = tonumber(publicAccountPolicy.SecureRandomBytes) or 0
+local SECURE_RANDOM_TIMEOUT_MS = tonumber(publicAccountPolicy.SecureRandomTimeoutMs) or 0
+local SECURE_RANDOM_EVENT = 'mz_bank:internal:accountRandomBytes'
+local secureRandomSource
 
 local function normalizeInternalCitizenId(value)
   if type(value) ~= 'string' then return nil end
@@ -42,6 +46,101 @@ function MZBankRepository.getPublicAccountByRoute(branch, accountNumber, checkDi
     WHERE branch = ? AND account_number = ? AND check_digit = ? AND account_type = ?
     LIMIT 1
   ]], { branch, accountNumber, checkDigit, PERSONAL_ACCOUNT_TYPE })
+end
+
+function MZBankRepository.listPublicAccountBackfillRows(afterPlayerId, limit)
+  afterPlayerId = tonumber(afterPlayerId)
+  limit = tonumber(limit)
+  if not afterPlayerId or afterPlayerId < 0 or afterPlayerId ~= math.floor(afterPlayerId) then
+    return nil, 'invalid_after_player_id'
+  end
+  if not limit or limit < 1 or limit > 501 or limit ~= math.floor(limit) then
+    return nil, 'invalid_backfill_limit'
+  end
+
+  local sql = ([[
+    SELECT p.id AS player_id, p.citizenid, a.status AS account_status
+    FROM mz_players p
+    LEFT JOIN mz_bank_accounts a
+      ON a.citizenid = p.citizenid AND a.account_type = ?
+    WHERE p.id > ?
+    ORDER BY p.id ASC
+    LIMIT %d
+  ]]):format(limit)
+  return MySQL.query.await(sql, { PERSONAL_ACCOUNT_TYPE, afterPlayerId }) or {}
+end
+
+local function validRandomHex(value)
+  return type(value) == 'string'
+    and #value == (SECURE_RANDOM_BYTES * 2)
+    and value:match('^[0-9a-fA-F]+$') ~= nil
+end
+
+local function getNodeSecureRandomHex()
+  if type(promise) ~= 'table' or type(promise.new) ~= 'function'
+    or type(Citizen) ~= 'table' or type(Citizen.Await) ~= 'function'
+    or type(SetTimeout) ~= 'function' then
+    return nil
+  end
+
+  local deferred = promise.new()
+  local settled = false
+  local function settle(payload)
+    if settled then return end
+    settled = true
+    deferred:resolve(payload)
+  end
+
+  TriggerEvent(SECURE_RANDOM_EVENT, SECURE_RANDOM_BYTES, function(randomHex, errorCode)
+    settle({ value = randomHex, error = errorCode })
+  end)
+  SetTimeout(SECURE_RANDOM_TIMEOUT_MS, function()
+    settle({ error = 'node_crypto_timeout' })
+  end)
+
+  local result = Citizen.Await(deferred)
+  if type(result) ~= 'table' or not validRandomHex(result.value) then return nil end
+  return result.value:upper()
+end
+
+-- Prefer the SQL engine's SSL-backed source. Older MariaDB deployments do not
+-- provide RANDOM_BYTES(), so a server-only Node crypto provider is used as the
+-- secure compatibility path. There is no RAND()/math.random fallback.
+function MZBankRepository.getSecureAccountRandomHex()
+  if secureRandomSource ~= 'node_crypto_random_bytes' then
+    local sqlOk, sqlValue = pcall(MySQL.scalar.await, 'SELECT HEX(RANDOM_BYTES(4))')
+    if sqlOk and validRandomHex(sqlValue) then
+      secureRandomSource = 'sql_random_bytes'
+      return sqlValue:upper(), secureRandomSource
+    end
+    secureRandomSource = 'node_crypto_random_bytes'
+  end
+
+  local nodeValue = getNodeSecureRandomHex()
+  if not nodeValue then return nil, 'secure_random_unavailable' end
+  return nodeValue, secureRandomSource
+end
+
+function MZBankRepository.insertPersonalAccount(account)
+  if type(account) ~= 'table' then return false end
+  return MySQL.transaction.await({
+    {
+      query = [[
+        INSERT INTO mz_bank_accounts (
+          citizenid, branch, account_number, check_digit,
+          account_type, status, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, 'active', ?)
+      ]],
+      parameters = {
+        account.citizenid,
+        account.branch,
+        account.accountNumber,
+        account.checkDigit,
+        PERSONAL_ACCOUNT_TYPE,
+        account.metadataJson
+      }
+    }
+  }) == true
 end
 
 function MZBankRepository.getCard(cardUid)

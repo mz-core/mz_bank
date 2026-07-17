@@ -236,9 +236,17 @@ RegisterNUICallback('deposit', function(data, cb)
   }))
 end)
 
+RegisterNUICallback('resolveTransferRecipient', function(data, cb)
+  cb(serverCallback('mz_bank:server:resolveTransferRecipient', sessionToken, {
+    branch = data and data.branch,
+    accountNumber = data and data.accountNumber,
+    checkDigit = data and data.checkDigit
+  }))
+end)
+
 RegisterNUICallback('transfer', function(data, cb)
   cb(serverCallback('mz_bank:server:transfer', sessionToken, {
-    recipientValue = data and (data.recipientValue or data.targetId),
+    resolutionToken = data and data.resolutionToken,
     amount = data and data.amount,
     idempotencyKey = data and data.idempotencyKey
   }))

@@ -6,11 +6,30 @@ local OBSERVED_DEPENDENCIES = {
   'mz_economy'
 }
 
+local function publicAccountServiceAvailable()
+  return type(MZBankAccountService) == 'table'
+    and type(MZBankAccountService.GetRuntimeStatus) == 'function'
+    and type(MZBankAccountService.ValidateRuntime) == 'function'
+end
+
+local function publicAccountRuntimeStatus()
+  if not publicAccountServiceAvailable() then
+    return {
+      enabled = false,
+      ready = false,
+      error = 'public_account_service_missing',
+      randomSource = nil
+    }
+  end
+  return MZBankAccountService.GetRuntimeStatus()
+end
+
 local readiness = {
   ready = false,
   error = 'not_started',
   dependencies = {},
-  migration = MZBankMigrations.getStatus()
+  migration = MZBankMigrations.getStatus(),
+  publicAccount = publicAccountRuntimeStatus()
 }
 
 local function dependencySnapshot()
@@ -38,6 +57,7 @@ local function setUnavailable(errorCode)
   readiness.ready = false
   readiness.error = errorCode
   readiness.migration = MZBankMigrations.getStatus()
+  readiness.publicAccount = publicAccountRuntimeStatus()
   MZBankService.SetReady(false)
   print(('[mz_bank] unavailable error=%s'):format(tostring(errorCode)))
 end
@@ -48,6 +68,7 @@ local function copyReadiness()
   local dependencies = {}
   for name, state in pairs(readiness.dependencies) do dependencies[name] = state end
   local migration = readiness.migration or {}
+  local publicAccount = readiness.publicAccount or {}
   local economyState = dependencies.mz_economy or 'missing'
   return {
     ready = readiness.ready,
@@ -60,6 +81,12 @@ local function copyReadiness()
       currentVersion = tonumber(migration.currentVersion) or 0,
       expectedVersion = tonumber(migration.expectedVersion) or 0,
       error = migration.error
+    },
+    publicAccount = {
+      enabled = publicAccount.enabled == true,
+      ready = publicAccount.ready == true,
+      error = publicAccount.error,
+      randomSource = publicAccount.randomSource
     }
   }
 end
@@ -81,6 +108,43 @@ CreateThread(function()
   if migrated ~= true then
     setUnavailable(('migration_failed:%s'):format(tostring(readiness.migration.error or 'unknown')))
     return
+  end
+
+
+  if not publicAccountServiceAvailable() then
+    setUnavailable('public_account_service_missing')
+    return
+  end
+
+  local accountRuntimeOk, accountRuntimeStatus = MZBankAccountService.ValidateRuntime()
+  readiness.publicAccount = type(accountRuntimeStatus) == 'table'
+    and accountRuntimeStatus or publicAccountRuntimeStatus()
+  if accountRuntimeOk ~= true then
+    setUnavailable(('public_account_runtime_invalid:%s'):format(
+      tostring(readiness.publicAccount.error or 'unknown')
+    ))
+    return
+  end
+  if readiness.publicAccount.enabled == true then
+    print(('[mz_bank] public account ready random_source=%s lazy_creation=authenticated_overview'):format(
+      tostring(readiness.publicAccount.randomSource or 'unknown')
+    ))
+  end
+  if type(MZBankAccountBackfill) == 'table'
+      and type(MZBankAccountBackfill.GetStatus) == 'function' then
+    local backfillStatus = MZBankAccountBackfill.GetStatus()
+    print(('[mz_bank][p2d] status ready=%s apply=%s command=%s error=%s'):format(
+      tostring(backfillStatus.ready == true), tostring(backfillStatus.applyEnabled == true),
+      tostring(backfillStatus.command or 'none'), tostring(backfillStatus.error or 'none')
+    ))
+  end
+  if type(MZBankAccountResolution) == 'table'
+      and type(MZBankAccountResolution.GetStatus) == 'function' then
+    local resolutionStatus = MZBankAccountResolution.GetStatus()
+    print(('[mz_bank][p2e] status ready=%s enabled=%s ttl=%s error=%s private=true'):format(
+      tostring(resolutionStatus.ready == true), tostring(resolutionStatus.enabled == true),
+      tostring(resolutionStatus.tokenTtlSeconds or 0), tostring(resolutionStatus.error or 'none')
+    ))
   end
 
   readiness.ready = true
@@ -143,11 +207,24 @@ lib.callback.register('mz_bank:server:deposit', function(source, token, payload)
   return safeServiceCall(MZBankService.Deposit, source, token, payload.amount, payload.idempotencyKey)
 end)
 
+lib.callback.register('mz_bank:server:resolveTransferRecipient', function(source, token, payload)
+  payload = type(payload) == 'table' and payload or {}
+  return safeServiceCall(MZBankService.ResolvePublicRecipient, source, {
+    branch = payload.branch,
+    accountNumber = payload.accountNumber,
+    checkDigit = payload.checkDigit
+  }, { token = token })
+end)
+
 lib.callback.register('mz_bank:server:transfer', function(source, token, payload)
   payload = type(payload) == 'table' and payload or {}
-  return safeServiceCall(MZBankService.Transfer, source, {
-    value = payload.recipientValue
-  }, payload.amount, { token = token, idempotencyKey = payload.idempotencyKey })
+  return safeServiceCall(
+    MZBankService.TransferByPublicAccount,
+    source,
+    payload.resolutionToken,
+    payload.amount,
+    { token = token, idempotencyKey = payload.idempotencyKey }
+  )
 end)
 
 RegisterNetEvent('mz_bank:server:closeSession', function(token, reason)
@@ -191,14 +268,6 @@ end)
 
 exports('GetStatement', function(source, filters, context)
   return safeServiceCall(MZBankService.GetStatement, source, filters, context)
-end)
-
-exports('ResolveRecipient', function(source, recipientValue, context)
-  return safeServiceCall(MZBankService.ResolveRecipient, source, recipientValue, context)
-end)
-
-exports('Transfer', function(source, recipient, amount, context)
-  return safeServiceCall(MZBankService.Transfer, source, recipient, amount, context)
 end)
 
 exports('GetCards', function(source, context)

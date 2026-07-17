@@ -207,6 +207,15 @@ end
 
 local findInventoryCard
 
+local function clearSession(source)
+  local session = Sessions[source]
+  if session and type(MZBankAccountResolution) == 'table'
+      and type(MZBankAccountResolution.CleanupSession) == 'function' then
+    MZBankAccountResolution.CleanupSession(source, session.token)
+  end
+  Sessions[source] = nil
+end
+
 local function validateSession(source, token, requireAuthentication)
   if not ready then return nil, 'bank_unavailable' end
   local session = Sessions[source]
@@ -216,7 +225,7 @@ local function validateSession(source, token, requireAuthentication)
   end
   if session.expiresAt <= os.time() then
     MZBankBridge.Log('bank.session.expired', source, { channel = session.channel })
-    Sessions[source] = nil
+    clearSession(source)
     return nil, 'session_expired'
   end
   local identity = MZBankBridge.ResolvePlayer(source, false)
@@ -228,14 +237,14 @@ local function validateSession(source, token, requireAuthentication)
       currentCitizenId ~= '' and ('***' .. currentCitizenId:sub(-4)) or 'missing',
       session.citizenid and ('***' .. tostring(session.citizenid):sub(-4)) or 'missing'
     ))
-    Sessions[source] = nil
+    clearSession(source)
     return nil, 'player_not_loaded'
   end
   local playerState, stateErr, stateDetail = getServerPlayerState(source)
   if not playerState then
     local elapsed = GetGameTimer() - (tonumber(session.lastCoordCheckAt) or 0)
     if stateErr ~= 'invalid_ped' or elapsed > COORDINATE_GRACE_MS then
-      Sessions[source] = nil
+      clearSession(source)
       MZBankBridge.Log('bank.session.physical_state_denied', source, {
         channel = session.channel,
         error = stateErr or 'invalid_ped',
@@ -262,7 +271,7 @@ local function validateSession(source, token, requireAuthentication)
         currentDistance,
         allowedDistance
       ))
-      Sessions[source] = nil
+      clearSession(source)
       MZBankBridge.Log('bank.session.too_far', source, {
         channel = session.channel,
         distance = currentDistance,
@@ -277,7 +286,7 @@ local function validateSession(source, token, requireAuthentication)
   if requireAuthentication ~= false and requiresCard(session.channel) then
     local card, cardErr = findInventoryCard(source, session.citizenid, session.cardUid)
     if not card then
-      Sessions[source] = nil
+      clearSession(source)
       MZBankBridge.Log('bank.card.session_invalidated', source, {
         channel = session.channel,
         card_uid = session.cardUid,
@@ -551,6 +560,36 @@ function MZBankService.GetAccountOverview(source, context)
 
   local identity = MZBankBridge.ResolvePlayer(source, false)
   if not identity then return response(false, 'player_not_loaded') end
+
+  local publicAccount
+  if MZBankAccountService.IsEnabled() then
+    local ensured = MZBankAccountService.EnsurePersonalAccount({
+      citizenid = identity.citizenid
+    })
+    if type(ensured) ~= 'table' or ensured.ok ~= true or type(ensured.account) ~= 'table' then
+      local accountError = type(ensured) == 'table' and ensured.error or 'public_account_unavailable'
+      MZBankBridge.Log('bank.public_account.ensure_failed', source, {
+        channel = session.channel,
+        error = accountError
+      })
+      if accountError == 'account_number_allocation_failed' then
+        return response(false, accountError)
+      end
+      return response(false, 'public_account_unavailable')
+    end
+    publicAccount = ensured.account
+    if not MZBankAccountService.CanAccountPerform(publicAccount.status, 'read') then
+      return response(false, 'account_closed')
+    end
+    if ensured.created == true then
+      MZBankBridge.Log('bank.public_account.created', source, {
+        channel = session.channel,
+        account_type = publicAccount.accountType,
+        status = publicAccount.status
+      })
+    end
+  end
+
   local bank, bankErr = MZBankBridge.GetMoney(source, 'bank')
   local wallet = MZBankBridge.GetMoney(source, 'wallet')
   if bank == nil then return response(false, bankErr or 'bank_unavailable') end
@@ -560,7 +599,8 @@ function MZBankService.GetAccountOverview(source, context)
     balance = bank,
     cash = wallet or 0,
     name = identity.displayName,
-    account = 'Conta corrente',
+    account = publicAccount and publicAccount.formatted or 'Conta corrente',
+    publicAccount = publicAccount,
     statement = statementOk and normalizeStatement(statementOrErr) or {},
     statementError = statementOk and false or 'statement_unavailable',
     currencySymbol = Config.CurrencySymbol
@@ -589,38 +629,42 @@ function MZBankService.GetStatement(source, filters, context)
   return response(true, nil, { statement = normalizeStatement(payload) })
 end
 
-local function resolveServerIdRecipient(source, recipientValue, allowOfflineRecovery)
-  recipientValue = tostring(recipientValue or '')
-  local targetSource = tonumber(recipientValue)
-  if not targetSource or targetSource <= 0 or targetSource ~= math.floor(targetSource) then
-    return nil, 'recipient_invalid'
-  end
-
-  local targetIdentity = targetSource and MZBankBridge.ResolvePlayer(targetSource, false) or nil
-  if not targetIdentity then
-    if allowOfflineRecovery == true then return { source = targetSource } end
-    return nil, 'recipient_offline'
-  end
-  if tonumber(targetSource) == tonumber(source) then return nil, 'self_transfer' end
-
+local function buildPublicResolutionActor(source, identity, session)
+  if type(identity) ~= 'table' or type(session) ~= 'table' then return nil end
   return {
-    source = targetSource,
-    citizenid = targetIdentity.citizenid,
-    name = targetIdentity.displayName
+    source = source,
+    citizenid = identity.citizenid,
+    sessionToken = session.token,
+    channel = session.channel
   }
 end
 
-function MZBankService.ResolveRecipient(source, recipientValue, context)
+-- P2-G: a NUI fisica usa este contrato sem receber citizenid ou IDs internos.
+function MZBankService.ResolvePublicRecipient(source, route, context)
   context = type(context) == 'table' and context or {}
   local session, sessionErr = validateSession(source, context.token, true)
   if not session then return response(false, sessionErr) end
   if not (CHANNEL_PERMISSIONS[session.channel] and CHANNEL_PERMISSIONS[session.channel].transfer) then
     return response(false, 'channel_forbidden')
   end
-
-  local resolved, resolveErr = resolveServerIdRecipient(source, recipientValue)
-  if not resolved then return response(false, resolveErr) end
-  return response(true, nil, { name = resolved.name })
+  local identity = MZBankBridge.ResolvePlayer(source, false)
+  if not identity then return response(false, 'player_not_loaded') end
+  if type(MZBankAccountResolution) ~= 'table'
+      or type(MZBankAccountResolution.Resolve) ~= 'function' then
+    return response(false, 'resolution_unavailable')
+  end
+  local actor = buildPublicResolutionActor(source, identity, session)
+  if not actor then return response(false, 'resolution_unavailable') end
+  local resolved = MZBankAccountResolution.Resolve(actor, route)
+  if type(resolved) ~= 'table' or resolved.ok ~= true then
+    return response(false, type(resolved) == 'table' and resolved.error or 'resolution_unavailable')
+  end
+  return response(true, nil, {
+    found = true,
+    resolutionToken = resolved.resolutionToken,
+    recipient = resolved.recipient,
+    expiresIn = resolved.expiresIn
+  })
 end
 
 local function transactionMetadata(session, reason, relatedCitizenId, idempotencyKey)
@@ -800,36 +844,169 @@ function MZBankService.Deposit(source, token, rawAmount, rawIdempotencyKey)
   end)
 end
 
-function MZBankService.Transfer(source, recipient, rawAmount, context)
+local function publicOriginError(account)
+  if type(account) ~= 'table' then return 'public_account_unavailable' end
+  local status = tostring(account.status or '')
+  if status == 'blocked' then return 'account_blocked' end
+  if status == 'frozen' then return 'account_frozen' end
+  if status == 'closed' then return 'account_closed' end
+  return 'public_account_unavailable'
+end
+
+local function isAmbiguousPublicTransferError(errorCode)
+  return errorCode == 'bank_unavailable'
+    or errorCode == 'database_error'
+    or errorCode == 'account_busy'
+    or errorCode == 'operation_busy'
+end
+
+local function consumePublicResolution(actor, resolutionToken)
+  if MZBankAccountResolution.InvalidateResolutionToken(actor, resolutionToken) == true then
+    return true
+  end
+  -- Fail closed: se o token esperado nao puder ser removido individualmente,
+  -- elimina todos os intents da mesma sessao sem encerrar a sessao bancaria.
+  MZBankAccountResolution.CleanupSession(actor.source, actor.sessionToken)
+  return false
+end
+
+local function executePublicAccountTransfer(
+  source, resolutionToken, rawAmount, idempotencyKey, session
+)
+    local amount, amountErr = validateAmount(rawAmount, session.channel, 'transfer')
+    if not amount then return response(false, amountErr) end
+
+    if type(MZBankAccountResolution) ~= 'table'
+        or type(MZBankAccountResolution.ValidateResolutionToken) ~= 'function'
+        or type(MZBankAccountResolution.InvalidateResolutionToken) ~= 'function'
+        or type(MZBankAccountResolution.CleanupSession) ~= 'function'
+        or type(MZBankRepository) ~= 'table'
+        or type(MZBankRepository.getPublicAccountByOwner) ~= 'function'
+        or type(MZBankAccountService) ~= 'table'
+        or type(MZBankAccountService.CanAccountPerform) ~= 'function' then
+      return response(false, 'resolution_unavailable')
+    end
+
+    local identity = MZBankBridge.ResolvePlayer(source, false)
+    if not identity then return response(false, 'player_not_loaded') end
+    local actor = buildPublicResolutionActor(source, identity, session)
+    if not actor then return response(false, 'resolution_unavailable') end
+
+    local originLookupOk, originAccount, originLookupError = pcall(
+      MZBankRepository.getPublicAccountByOwner, identity.citizenid
+    )
+    if not originLookupOk or originLookupError
+        or type(originAccount) ~= 'table'
+        or tostring(originAccount.citizenid or '') ~= tostring(identity.citizenid)
+        or tostring(originAccount.account_type or '') ~= 'personal'
+        or MZBankAccountService.CanAccountPerform(originAccount.status, 'transfer') ~= true then
+      consumePublicResolution(actor, resolutionToken)
+      return response(false, publicOriginError(originAccount))
+    end
+
+    local resolved, resolutionError = MZBankAccountResolution.ValidateResolutionToken(
+      actor, resolutionToken
+    )
+    if not resolved then return response(false, resolutionError or 'invalid_resolution_token') end
+    if tostring(resolved.targetCitizenId or '') == tostring(identity.citizenid) then
+      consumePublicResolution(actor, resolutionToken)
+      return response(false, 'self_transfer')
+    end
+
+    local fee, feeErr = calculateTransferFee(amount)
+    if fee == nil then
+      consumePublicResolution(actor, resolutionToken)
+      return response(false, feeErr)
+    end
+    local metadata = transactionMetadata(
+      session, 'public_account_transfer', resolved.targetCitizenId, idempotencyKey
+    )
+    metadata.fee = fee
+    metadata.recipient_reason = session.channel .. '_transfer_received'
+    metadata.data.public_account_resolution = true
+
+    -- O citizenid foi resolvido e revalidado exclusivamente no servidor. O
+    -- core continua responsavel por locks, persistencia atomica e idempotencia.
+    local result = MZBankBridge.TransferBankBetweenPlayers(
+      source, resolved.targetCitizenId, amount, metadata
+    )
+    if type(result) ~= 'table' or result.ok ~= true then
+      local rawError = type(result) == 'table' and result.error or 'transaction_failed'
+      if not isAmbiguousPublicTransferError(rawError) then
+        consumePublicResolution(actor, resolutionToken)
+      end
+      if rawError == 'recipient_offline' then rawError = 'recipient_unavailable' end
+      return response(false, coreTransactionError(rawError, 'not_enough_bank'))
+    end
+
+    consumePublicResolution(actor, resolutionToken)
+    local targetSource = tonumber(result.targetSource or resolved.targetSource)
+    if result.replayed ~= true and targetSource and targetSource > 0 then
+      MZBankBridge.Notify(targetSource, ('Voce recebeu %s%s de %s.'):format(
+        Config.CurrencySymbol, amount, MZBankBridge.GetDisplayName(source)
+      ), 'success')
+    end
+    MZBankBridge.Log(
+      result.replayed and 'bank.public_account.transfer.replayed'
+        or 'bank.public_account.transfer',
+      source,
+      {
+        channel = session.channel,
+        amount = amount,
+        fee = fee,
+        transaction_ref = result.transactionRef
+      }
+    )
+    return confirmedFinancialResponse(
+      source, session.token, session, 'transfer', amount, fee, result
+    )
+end
+
+-- P2-G: contrato financeiro consumido pelo callback fisico apos confirmacao.
+function MZBankService.TransferByPublicAccount(source, resolutionToken, rawAmount, context)
   context = type(context) == 'table' and context or {}
   local idempotencyKey, idempotencyErr = validateIdempotencyKey(context.idempotencyKey)
   if not idempotencyKey then return response(false, idempotencyErr) end
-  local recipientValue = type(recipient) == 'table'
-    and (recipient.value or recipient.recipientValue or recipient.targetId)
-    or recipient
 
   return runOperation(source, context.token, 'transfer', idempotencyKey, function(session)
-    local amount, amountErr = validateAmount(rawAmount, session.channel, 'transfer')
-    if not amount then return response(false, amountErr) end
-    local resolved, resolveErr = resolveServerIdRecipient(source, recipientValue, true)
-    if not resolved then return response(false, resolveErr) end
-    local fee, feeErr = calculateTransferFee(amount)
-    if fee == nil then return response(false, feeErr) end
-    local metadata = transactionMetadata(session, 'transfer', resolved.citizenid, idempotencyKey)
-    metadata.fee = fee
-    metadata.recipient_reason = session.channel .. '_transfer_received'
-    local result = MZBankBridge.TransferBankBetweenPlayers(source, resolved.source, amount, metadata)
-    if result.ok ~= true then return response(false, coreTransactionError(result.error, 'not_enough_bank')) end
-
-    if result.replayed ~= true and resolved.citizenid then
-      MZBankBridge.Notify(resolved.source, ('Voce recebeu %s%s de %s.'):format(Config.CurrencySymbol, amount, MZBankBridge.GetDisplayName(source)), 'success')
-    end
-    MZBankBridge.Log(result.replayed and 'bank.transfer.replayed' or 'bank.transfer', source, {
-      channel = session.channel, amount = amount, fee = fee,
-      related_citizenid = result.targetCitizenId or resolved.citizenid, transaction_ref = result.transactionRef
-    })
-    return confirmedFinancialResponse(source, context.token, session, 'transfer', amount, fee, result)
+    return executePublicAccountTransfer(
+      source, resolutionToken, rawAmount, idempotencyKey, session
+    )
   end)
+end
+
+-- Superficie estritamente interna para o runner temporario. Com a convar
+-- desligada as funcoes nem sequer existem. Nao ha export/evento/callback.
+if GetConvarInt('mz_bank_p2f_runtime_runner', 0) == 1 then
+  function MZBankService.GetP2FRuntimeSession(source)
+    source = tonumber(source)
+    local existing = source and Sessions[source] or nil
+    if not existing then return nil, 'invalid_session' end
+    local session, sessionError = validateSession(source, existing.token, true)
+    if not session then return nil, sessionError end
+    return {
+      token = session.token,
+      citizenid = session.citizenid,
+      channel = session.channel,
+      coords = cloneCoords(session.coords),
+      authenticated = session.authenticated == true
+    }
+  end
+
+  function MZBankService.ExecuteP2FRuntimeFixture(
+    source, resolutionToken, rawAmount, rawIdempotencyKey, session
+  )
+    local idempotencyKey, idempotencyError = validateIdempotencyKey(rawIdempotencyKey)
+    if not idempotencyKey then return response(false, idempotencyError) end
+    if type(session) ~= 'table' or session.authenticated ~= true
+        or (session.channel ~= 'atm' and session.channel ~= 'branch')
+        or type(session.token) ~= 'string' or session.token == '' then
+      return response(false, 'invalid_session')
+    end
+    return executePublicAccountTransfer(
+      source, resolutionToken, rawAmount, idempotencyKey, session
+    )
+  end
 end
 
 local function validateBranchCardContext(source, context)
@@ -874,13 +1051,17 @@ end
 function MZBankService.CloseSession(source, token, reason)
   local session = Sessions[source]
   if session and (not token or session.token == token) then
-    Sessions[source] = nil
+    clearSession(source)
     MZBankBridge.Log('bank.session.closed', source, { channel = session.channel, reason = reason or 'client_close' })
   end
   return response(true)
 end
 
 function MZBankService.CleanupSource(source)
+  if type(MZBankAccountResolution) == 'table'
+      and type(MZBankAccountResolution.CleanupSession) == 'function' then
+    MZBankAccountResolution.CleanupSession(source)
+  end
   Sessions[source] = nil
   RateLimits[source] = nil
 end
@@ -890,7 +1071,9 @@ CreateThread(function()
     Wait(5000)
     local now = os.time()
     for source, session in pairs(Sessions) do
-      if session.expiresAt <= now then Sessions[source] = nil end
+      if session.expiresAt <= now then
+        clearSession(source)
+      end
     end
   end
 end)

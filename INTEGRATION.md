@@ -26,22 +26,24 @@ Erros retornam `{ ok = false, error = 'codigo_estavel' }`. Todos os caminhos de 
 
 ## API server-side atual
 
-Os exports atuais exigem contexto fisico autenticado. O token resolve a sessao e o canal no servidor; `context.channel` nao seleciona capacidade:
+Os exports gerais atuais exigem contexto fisico autenticado. O token resolve a sessao e o canal no servidor; `context.channel` nao seleciona capacidade:
 
 ```lua
 exports['mz_bank']:GetAccountOverview(source, { token = token })
 exports['mz_bank']:GetStatement(source, { limit = 20 }, { token = token })
-exports['mz_bank']:ResolveRecipient(source, '12', { token = token })
-exports['mz_bank']:Transfer(source, { value = '12' }, 500, {
-  token = token,
-  idempotencyKey = 'chave-opaca-unica-com-16-a-64-caracteres'
-})
 exports['mz_bank']:GetCards(source, { token = branchToken })
 exports['mz_bank']:BlockCard(source, cardUid, { token = branchToken })
 exports['mz_bank']:RequestReplacementCard(source, { token = branchToken })
 ```
 
-O tipo de destinatario fisico e fixo em `server_id`; `citizenid` nao e aceito nem devolvido pelo contrato de resolucao. `GetCards`, `BlockCard` e `RequestReplacementCard` exigem uma sessao de agencia.
+O fluxo fisico de transferencia nao possui export client-facing. A NUI envia somente
+`branch`, `accountNumber` e `checkDigit` ao callback de resolucao; recebe um DTO mascarado e um
+`resolutionToken` opaco e temporario. A confirmacao envia somente esse token, o valor inteiro e a
+chave de idempotencia. O servidor resolve e revalida o `citizenid` internamente antes de chamar o
+servico financeiro oficial do `mz_core`.
+
+Server ID, `targetId`, `recipientValue` e `citizenid` nao fazem parte do contrato final da NUI.
+`GetCards`, `BlockCard` e `RequestReplacementCard` exigem uma sessao de agencia.
 
 O canal `phone` esta desativado nesta fase. Uma integracao futura precisa de sessao/capability propria e nao pode reutilizar callbacks fisicos ou aceitar `source`/`citizenid` escolhidos pelo client.
 

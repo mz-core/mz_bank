@@ -125,10 +125,38 @@
                         <!-- transferencia -->
                         <section class="view hidden" data-view="transfer">
                             <h2>Transferencia</h2>
-                            <p class="hint">ID do jogador de destino</p>
-                            <input type="number" id="transfer-target" class="text-input" placeholder="Ex: 12" readonly />
-                            <p class="hint">Valor</p>
-                            <div class="amount-display"><span class="currency-symbol">R$</span><span id="transfer-amount">0</span></div>
+                            <p class="hint transfer-hint">Informe os dados da conta de destino</p>
+                            <div class="transfer-route-grid">
+                                <label class="route-field branch-field"><span>Agencia</span><input id="transfer-branch" class="text-input" value="0001" inputmode="numeric" readonly /></label>
+                                <label class="route-field account-field"><span>Conta</span><input id="transfer-account" class="text-input" placeholder="00000000" inputmode="numeric" readonly /></label>
+                                <label class="route-field digit-field"><span>DV</span><input id="transfer-digit" class="text-input" placeholder="0" inputmode="numeric" readonly /></label>
+                            </div>
+                            <div class="transfer-amount-row">
+                                <span>Valor</span>
+                                <div class="amount-display"><span class="currency-symbol">R$</span><span id="transfer-amount">0</span></div>
+                            </div>
+                        </section>
+
+                        <section class="view hidden" data-view="transfer-confirm">
+                            <h2>Confirme a transferencia</h2>
+                            <div class="confirmation-card">
+                                <span class="confirmation-label">Destinatario</span>
+                                <strong id="confirm-recipient">-</strong>
+                                <span id="confirm-route" class="confirmation-route">-</span>
+                                <div class="confirmation-total"><span>Valor</span><strong id="confirm-amount">R$0</strong></div>
+                            </div>
+                            <p class="hint">Confira os dados antes de confirmar</p>
+                        </section>
+
+                        <section class="view hidden" data-view="transfer-receipt">
+                            <h2>Transferencia concluida</h2>
+                            <div class="receipt-card">
+                                <span class="receipt-check">&#10003;</span>
+                                <strong id="receipt-amount">R$0</strong>
+                                <span id="receipt-recipient">-</span>
+                                <span id="receipt-route" class="confirmation-route">-</span>
+                                <small>Referencia <span id="receipt-reference">-</span></small>
+                            </div>
                         </section>
 
                         <!-- extrato -->

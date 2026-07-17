@@ -18,6 +18,15 @@ function MZBankAccountIdentity.ValidateConfiguration()
   if ACCOUNT_NUMBER_LENGTH ~= 8 then return false, 'invalid_account_number_length' end
   if ACCOUNT_TYPE ~= 'personal' then return false, 'invalid_account_type' end
   if CHECK_DIGIT_ALGORITHM ~= 'mod11' then return false, 'invalid_check_digit_algorithm' end
+  if type(policy.Enabled) ~= 'boolean' then return false, 'invalid_public_account_enabled' end
+  if type(policy.StagingEnableConvar) ~= 'string' or policy.StagingEnableConvar == '' then
+    return false, 'invalid_public_account_staging_convar'
+  end
+  if tonumber(policy.SecureRandomBytes) ~= 4 then return false, 'invalid_secure_random_bytes' end
+  if tonumber(policy.SecureRandomTimeoutMs) ~= 1500 then return false, 'invalid_secure_random_timeout' end
+  if tonumber(policy.AllocationAttempts) ~= 10 then return false, 'invalid_allocation_attempts' end
+  if tonumber(policy.RandomDrawAttempts) ~= 16 then return false, 'invalid_random_draw_attempts' end
+  if tonumber(policy.MetadataVersion) ~= 1 then return false, 'invalid_metadata_version' end
   local requiredStatuses = { active = true, blocked = true, frozen = true, closed = true }
   for status in pairs(requiredStatuses) do
     if ALLOWED_STATUSES[status] ~= true then

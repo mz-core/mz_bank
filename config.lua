@@ -32,20 +32,52 @@ Config.StatementLimit = 15
 Config.Debug = false
 Config.DebugAce = 'group.mz_owner'
 
--- Fundacao da identidade bancaria publica (Fase 2 / P2-A). A feature segue
--- desligada: este lote cria somente schema, politica e algoritmo de DV; nao
--- cria contas, nao executa backfill e nao altera o fluxo atual de transferencia.
+-- Identidade bancaria publica (Fase 2). A feature permanece desligada por
+-- padrao e pode ser ativada temporariamente em staging pela convar abaixo.
+-- P2-C cria a conta somente no overview fisico ja autenticado. P2-D concluiu
+-- o backfill; P2-E adiciona resolucao privada e P2-F consome o token somente
+-- no contrato server-side. O cutover da NUI continua fora do escopo.
 Config.PublicAccount = {
   Enabled = false,
+  StagingEnableConvar = 'mz_bank_public_account_p2c',
   DefaultBranch = '0001',
   AccountNumberLength = 8,
   AccountType = 'personal',
   CheckDigitAlgorithm = 'mod11',
+  SecureRandomBytes = 4,
+  SecureRandomTimeoutMs = 1500,
+  AllocationAttempts = 10,
+  RandomDrawAttempts = 16,
+  MetadataVersion = 1,
   AllowedStatuses = {
     active = true,
     blocked = true,
     frozen = true,
     closed = true
+  },
+  Resolution = {
+    Enabled = true,
+    TokenTtlSeconds = 60,
+    SessionWindowSeconds = 60,
+    SessionMaxAttempts = 5,
+    ActorWindowSeconds = 3600,
+    ActorMaxAttempts = 20,
+    CooldownAfterFailures = 3,
+    CooldownBaseSeconds = 2,
+    CooldownMaxSeconds = 30,
+    MaxActiveTokensPerSource = 20
+  },
+  Backfill = {
+    Enabled = true,
+    AllowApply = false,
+    ApplyEnableConvar = 'mz_bank_p2d_backfill_apply',
+    Ace = 'mz_bank.accounts.backfill',
+    Command = 'mz_bank_accounts_backfill',
+    DefaultBatchSize = 100,
+    MaxBatchSize = 500,
+    PreviewMaxAgeSeconds = 1800,
+    MaxActivePreviews = 32,
+    ConfirmationPhrase = 'APPLY_PUBLIC_ACCOUNT_BACKFILL'
   }
 }
 
@@ -260,6 +292,13 @@ Config.Locale = {
   success = 'Operacao realizada com sucesso.',
   player_not_loaded = 'Seu personagem ainda nao foi carregado.',
   bank_unavailable = 'O servico bancario esta indisponivel.',
+  public_account_unavailable = 'Nao foi possivel carregar sua conta bancaria.',
+  resolution_unavailable = 'A confirmacao do destinatario esta indisponivel.',
+  invalid_resolution_token = 'A confirmacao do destinatario expirou ou nao e valida.',
+  account_blocked = 'Sua conta bancaria esta bloqueada para transferencias.',
+  account_frozen = 'Sua conta bancaria esta congelada para movimentacoes.',
+  account_number_allocation_failed = 'Nao foi possivel gerar o numero da conta agora.',
+  account_closed = 'Esta conta bancaria esta encerrada.',
   invalid_session = 'Sessao bancaria invalida.',
   session_expired = 'Sua sessao bancaria expirou.',
   too_far = 'Voce se afastou do ponto de atendimento.',
@@ -283,6 +322,7 @@ Config.Locale = {
   recipient_invalid = 'Destinatario invalido.',
   recipient_not_found = 'Destinatario nao encontrado.',
   recipient_offline = 'O destinatario precisa estar online.',
+  recipient_unavailable = 'O destinatario esta indisponivel.',
   self_transfer = 'Voce nao pode transferir para si mesmo.',
   operation_busy = 'Aguarde a operacao atual terminar.',
   rate_limited = 'Aguarde um instante antes de tentar novamente.',

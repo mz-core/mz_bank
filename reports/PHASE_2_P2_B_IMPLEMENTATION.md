@@ -1,8 +1,9 @@
 # Fase 2 — Implementação do Lote P2-B
 
 Data: 2026-07-15  
-Estado: **P2-B `[S]` — VALIDADO ESTATICAMENTE**  
-Runtime específico do repository P2-B: **NÃO EXECUTADO**
+Estado da implementação neste relatório: **P2-B `[S]` — VALIDADO ESTATICAMENTE**  
+Estado atual após validação posterior: **P2-B `[R]` — APROVADO em runtime em 2026-07-16**, conforme
+`PHASE_2_P2_B_RUNTIME_APPROVAL.md`.
 
 ## 1. Diagnóstico
 
@@ -256,7 +257,7 @@ O P2-C exige prompt e revisão próprios. Não foi antecipado neste lote.
 ```text
 Fase 2: [~] Em implementação
 P2-A: [R] Aprovado em runtime
-P2-B: [S] Validado estaticamente
+P2-B: [R] Aprovado em runtime
 P2-C e seguintes: NÃO IMPLEMENTADOS
 Fase 2 completa: NÃO APROVADA
 ```
