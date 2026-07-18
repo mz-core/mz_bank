@@ -565,7 +565,7 @@ metadata_json
 
 # Fase 3 — Idempotência, outbox e auditoria
 
-**Status:** `[ ] Não iniciada`
+**Status:** `[~] Em planejamento — desenho concluído; implementação não iniciada`
 
 ## Objetivo
 
@@ -629,6 +629,47 @@ last_error
 - [ ] Dois workers não processam o mesmo evento duas vezes.
 - [ ] Dead letters são visíveis e reprocessáveis.
 - [ ] Resultado de operação pode ser recuperado pela chave idempotente.
+
+**Revisão de desenho:** `reports/PHASE_3_DESIGN_REVIEW.md` — arquitetura, schema proposto,
+contratos privados, claim/lease/retry, dead letter, reconciliação, riscos e lotes P3-A a P3-G.
+Nenhum código ou runtime da Fase 3 foi aprovado nesta revisão.
+
+**Lote P3-A:** `[R] Aprovado em runtime` — schemas `mz_financial_outbox` e
+`mz_economy_outbox_receipts`, readiness estrutural e flags desligadas implementados conforme
+`reports/PHASE_3_P3_A_IMPLEMENTATION.md`. Sete casos foram aprovados manualmente no MySQL/FiveM
+staging conforme confirmação do usuário, com zero falhas e zero bloqueados. O fault injection
+destrutivo foi não aplicável nesta rodada. Nenhuma escrita financeira, worker ou consumer foi ativado.
+
+**Lote P3-B:** `[R] Aprovado em runtime no escopo funcional` — envelope financeiro v1 e insert atômico de outbox
+implementados para `TransferMoneyBetweenAccounts` e `TransferBankBetweenPlayers`, com/sem chave
+idempotente. Quatro operações reais geraram quatro eventos `pending`, com saldo correto e zero falha
+informada. O retorno às flags desligadas preservou os eventos e restaurou o ledger legado para novas
+operações. Concorrência, replay forçado e falha SQL permanecem para o end-to-end. Consumer e worker
+continuam pendentes conforme `reports/PHASE_3_P3_B_RUNTIME_APPROVAL.md`.
+
+**Lote P3-C:** `[R] Aprovado em runtime no escopo funcional` — consumer idempotente privado implementado no
+`mz_economy`. O contrato aceita somente o invocador server-side `mz_core`, valida integralmente o
+envelope v1 e grava recibo mais todas as pernas do ledger em uma única transação SQL. Replay usa o
+recibo persistente e IDs `mzoutbox:<outbox_id>:<leg>`. O runner manual de staging fica desativado por
+padrão e não altera claim/status da outbox. O usuário confirmou manualmente consumo inicial de
+quatro eventos, replay integral, extrato sem duplicidade, saldo preservado e outbox ainda `pending`,
+com zero falha informada. Fault injection e gates avançados permanecem para o end-to-end. Dispatcher,
+ACK, retry e dead letter ainda não foram implementados.
+
+**Lote P3-D:** `[R] Aprovado em runtime no escopo funcional` — dispatcher server-side implementado no `mz_core`,
+desligado por padrão, com preflight privado do consumer, claim atômico por UUID, lease, recuperação
+de lease expirado, ACK condicionado ao token, backoff exponencial com jitter e transição técnica para
+`dead_letter`. O worker não altera saldo e não oferece endpoint ao client. O usuário confirmou
+startup, backlog por replay, operações novas, economy offline, restart, health, smoke físico e
+saldo/persistência, com zero falha informada. Concorrência/fault injection avançados permanecem no
+end-to-end. Administração/reprocesso de dead letter e reconciliação continuam reservados ao P3-E.
+
+**Lote P3-E:** `[S] Validado estaticamente` — administração server-side implementada no `mz_core`,
+desligada por padrão, com ACE específica, preview temporário por ID/correlationId, vínculo ao ator,
+frase forte, gate separado de aplicação e referência de uso único. O reprocesso valida novamente o
+envelope e move somente `dead_letter -> pending`, sem editar payload/saldo/ledger. Reconciliação é
+read-only e a retenção de 90 dias é apenas reportada, sem purge. Runtime permanece pendente conforme
+`reports/PHASE_3_P3_E_RUNTIME_CHECKLIST.md`.
 
 ---
 
@@ -1174,7 +1215,9 @@ Antes da aprovação da Fase 3, nenhum novo canal financeiro deve ser liberado e
 
 ## 11. Próxima tarefa oficial
 
-Próxima tarefa oficial: preparar somente a Fase 3 — idempotência, outbox e auditoria — conforme os gates do roadmap. Não implementar phone nesta etapa.
+Próxima tarefa oficial: executar somente o checklist runtime do P3-E no MySQL/FiveM staging. Não
+implementar produtores restantes, P3-F, phone, alteração de saldo ou purge automático antes da
+validação real deste lote.
 
 Resultado atual:
 
@@ -1182,6 +1225,12 @@ Resultado atual:
 Fase 0: [S] Validada estaticamente
 Fase 1: [R] Aprovada em runtime
 Fase 2: [R] Aprovada em runtime
+Fase 3: [~] Em implementação
+P3-A: [R] Aprovado em runtime
+P3-B: [R] Aprovado em runtime no escopo funcional
+P3-C: [R] Aprovado em runtime no escopo funcional
+P3-D: [R] Aprovado em runtime no escopo funcional
+P3-E: [S] Validado estaticamente; runtime pendente
 P2-A: [R]
 P2-B: [R]
 P2-C: [R]
