@@ -565,7 +565,7 @@ metadata_json
 
 # Fase 3 — Idempotência, outbox e auditoria
 
-**Status:** `[~] Em planejamento — desenho concluído; implementação não iniciada`
+**Status:** `[R] Aprovada em runtime — P3-A a P3-G concluídos`
 
 ## Objetivo
 
@@ -622,13 +622,13 @@ last_error
 
 ## Critérios de aprovação
 
-- [ ] `mz_economy` pode ficar offline sem perda de evento.
-- [ ] Eventos pendentes são processados depois do retorno.
-- [ ] Retry não duplica saldo.
-- [ ] Retry não duplica ledger.
-- [ ] Dois workers não processam o mesmo evento duas vezes.
-- [ ] Dead letters são visíveis e reprocessáveis.
-- [ ] Resultado de operação pode ser recuperado pela chave idempotente.
+- [x] `mz_economy` pode ficar offline sem perda de evento.
+- [x] Eventos pendentes são processados depois do retorno.
+- [x] Retry não duplica saldo.
+- [x] Retry não duplica ledger.
+- [x] Dois workers não processam o mesmo evento duas vezes.
+- [x] Dead letters são visíveis e reprocessáveis.
+- [x] Resultado de operação pode ser recuperado pela chave idempotente.
 
 **Revisão de desenho:** `reports/PHASE_3_DESIGN_REVIEW.md` — arquitetura, schema proposto,
 contratos privados, claim/lease/retry, dead letter, reconciliação, riscos e lotes P3-A a P3-G.
@@ -664,18 +664,46 @@ startup, backlog por replay, operações novas, economy offline, restart, health
 saldo/persistência, com zero falha informada. Concorrência/fault injection avançados permanecem no
 end-to-end. Administração/reprocesso de dead letter e reconciliação continuam reservados ao P3-E.
 
-**Lote P3-E:** `[S] Validado estaticamente` — administração server-side implementada no `mz_core`,
+**Lote P3-E:** `[R] Aprovado em runtime no escopo funcional` — administração server-side implementada no `mz_core`,
 desligada por padrão, com ACE específica, preview temporário por ID/correlationId, vínculo ao ator,
 frase forte, gate separado de aplicação e referência de uso único. O reprocesso valida novamente o
 envelope e move somente `dead_letter -> pending`, sem editar payload/saldo/ledger. Reconciliação é
-read-only e a retenção de 90 dias é apenas reportada, sem purge. Runtime permanece pendente conforme
-`reports/PHASE_3_P3_E_RUNTIME_CHECKLIST.md`.
+read-only e a retenção de 90 dias é apenas reportada, sem purge. O usuário confirmou 12 de 12 casos
+funcionais no MySQL/FiveM staging, com zero falha financeira e zero bloqueados. Administração,
+runner e apply foram desligados no teardown. O falso texto `audit_after_failed` foi corrigido e o
+delta correspondente foi encerrado pela revisão final P3-G.
+
+**Lote P3-F:** `[R] Aprovado em runtime` — `AddMoney`, `RemoveMoney`, `SetMoney`, ajustes
+organizacionais, transferências jogador↔organização e payroll agora persistem as fontes oficiais e a
+outbox na mesma transação. O consumer privado aceita os novos envelopes de uma e duas pernas; cache
+só muda após commit e o ledger best-effort é apenas fallback com a feature desligada. Payroll ganhou
+replay persistente por janela. Lua e buscas estáticas foram aprovados conforme
+`reports/PHASE_3_P3_F_IMPLEMENTATION.md`. No runtime, 16 de 16 casos foram aprovados manualmente no
+MySQL/FiveM staging conforme resultados fornecidos pelo usuário, incluindo producers pessoais,
+economy offline/backlog, restart, ajustes e transferências organizacionais, payroll/replay e smoke
+físico, fault SQL organizacional, concorrência real e taxa/refund com falha controlada de entrega. O
+P3-F é `[R]` e sua evidência compõe a aprovação final `[R]` da Fase 3.
+
+**Lote P3-G:** `[R] Aprovado em runtime — 6/6 aprovados` — a releitura independente
+confirmou ownership, atomicidade, idempotência, consumer privado, claim/lease, retry, dead letter,
+administração, reconciliação e produtores atuais. Sintaxe e superfícies client-facing foram
+verificadas sem bloqueador estático. Os testes financeiros já aprovados não serão repetidos. Restam
+somente seis casos consolidados de resiliência/teardown descritos em
+`reports/PHASE_3_P3_G_RUNTIME_CHECKLIST.md`. O runner único, server-side, console-only e sem escrita
+de saldo foi validado estaticamente conforme `reports/PHASE_3_P3_G_RUNNER_IMPLEMENTATION.md`; até
+sua conclusão. O runner executado no MySQL/FiveM staging passou os cinco deltas técnicos, removeu
+todas as fixtures e preservou os saldos. O teardown desligou o runner e confirmou core, dispatcher,
+economy, consumer, inventory e banco ready. A decisão final está registrada em
+`reports/PHASE_3_FINAL_DECISION.md`; a Fase 3 recebe `[R]`.
 
 ---
 
 # Fase 4 — API bancária compartilhada
 
-**Status:** `[~] Em implementação`
+**Status:** `[R] Aprovada em runtime`
+
+**Aprovação runtime da API v1 (2026-07-19):** smoke físico e runner server-side aprovados pelo
+usuário, com `10/10` casos, zero falhas e zero bloqueados. A capability `phone` não foi antecipada.
 
 ## Objetivo
 
@@ -760,19 +788,25 @@ GetOperationResult
 
 ## Critérios de aprovação
 
-- [ ] Callback físico não alcança `phone`.
-- [ ] ATM e agência usam a API oficial.
-- [ ] Phone pode integrar sem copiar lógica.
-- [ ] Permissões por canal são testadas.
-- [ ] DTOs não expõem identificadores internos.
-- [ ] Erros e versionamento estão documentados.
-- [ ] Testes de abuso e replay são aprovados.
+- [x] Callback físico não alcança `phone`.
+- [x] ATM e agência usam a API oficial.
+- [x] Phone pode integrar sem copiar lógica.
+- [x] Permissões por canal são testadas.
+- [x] DTOs não expõem identificadores internos.
+- [x] Erros e versionamento estão documentados.
+- [x] Testes de abuso e replay são aprovados.
 
 ---
 
 # Fase 5 — Cartão bancário completo
 
 **Status:** `[~] Em implementação`
+
+**Gate do MVP phone (2026-07-19):** `[R]` aprovado em runtime para consulta sanitizada e bloqueio,
+com revalidação, invalidação de sessão e ausência de segredo no client. A decisão reutiliza os
+testes reais das Fases 0, 3 e 4 e está em `reports/PHASE_5_PHONE_MVP_GATE.md`. Emissão/segunda via
+continuam exclusivas da agência; os demais critérios abaixo permanecem pendentes e a Fase 5 não é
+declarada completa.
 
 ## Objetivo
 
@@ -1215,9 +1249,9 @@ Antes da aprovação da Fase 3, nenhum novo canal financeiro deve ser liberado e
 
 ## 11. Próxima tarefa oficial
 
-Próxima tarefa oficial: executar somente o checklist runtime do P3-E no MySQL/FiveM staging. Não
-implementar produtores restantes, P3-F, phone, alteração de saldo ou purge automático antes da
-validação real deste lote.
+Próxima tarefa oficial: revisar o estado real da Fase 4 — API bancária compartilhada — e concluir
+somente os contratos mínimos necessários para ATM, agência e futura integração do `mz_phone`. Não
+iniciar a integração financeira do phone antes da aprovação da Fase 4.
 
 Resultado atual:
 
@@ -1225,12 +1259,14 @@ Resultado atual:
 Fase 0: [S] Validada estaticamente
 Fase 1: [R] Aprovada em runtime
 Fase 2: [R] Aprovada em runtime
-Fase 3: [~] Em implementação
+Fase 3: [R] Aprovada em runtime
 P3-A: [R] Aprovado em runtime
 P3-B: [R] Aprovado em runtime no escopo funcional
 P3-C: [R] Aprovado em runtime no escopo funcional
 P3-D: [R] Aprovado em runtime no escopo funcional
-P3-E: [S] Validado estaticamente; runtime pendente
+P3-E: [R] Aprovado em runtime no escopo funcional
+P3-F: [R] Aprovado em runtime — 16/16 aprovados
+P3-G: [R] Aprovado em runtime — 6/6 aprovados
 P2-A: [R]
 P2-B: [R]
 P2-C: [R]

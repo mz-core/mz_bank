@@ -389,11 +389,14 @@ local function issueCard(source, replacement, identity)
 
   local fee = replacement and Config.Card.ReplacementFee or Config.Card.IssueFee
   fee = math.floor(tonumber(fee) or 0)
+  local feeExternalRef = ('mzbank-card-fee-%d-%d-%06d'):format(
+    os.time(), tonumber(source) or 0, math.random(0, 999999)
+  )
   local feePaid = false
   if fee > 0 then
     local paid, payErr = MZBankBridge.RemoveMoney(source, 'bank', fee, {
       category = 'bank_branch', reason = replacement and 'card_replacement_fee' or 'card_issue_fee',
-      source_resource = 'mz_bank', source_type = 'branch'
+      source_resource = 'mz_bank', source_type = 'branch', external_ref = feeExternalRef
     })
     if not paid then return response(false, payErr == 'not_enough_money' and 'not_enough_bank' or 'transaction_failed') end
     feePaid = true
@@ -404,7 +407,8 @@ local function issueCard(source, replacement, identity)
     if not feePaid then return end
     local refunded, refundErr = MZBankBridge.AddMoney(source, 'bank', fee, {
       category = 'bank_branch', reason = 'card_fee_rollback', source_resource = 'mz_bank',
-      source_type = 'branch', data = { rollback_reason = reason }
+      source_type = 'branch', external_ref = feeExternalRef,
+      data = { rollback_reason = reason }
     })
     if not refunded then
       print(('[mz_bank] card fee rollback failed source=%s error=%s'):format(source, tostring(refundErr)))
@@ -627,6 +631,46 @@ function MZBankService.GetStatement(source, filters, context)
   local ok, payload = MZBankBridge.GetStatement(source, limit)
   if not ok then return response(false, 'statement_unavailable', { statement = {} }) end
   return response(true, nil, { statement = normalizeStatement(payload) })
+end
+
+function MZBankService.GetPublicAccount(source, context)
+  context = type(context) == 'table' and context or {}
+  local session, sessionErr = validateSession(source, context.token, true)
+  if not session then return response(false, sessionErr) end
+  if not (CHANNEL_PERMISSIONS[session.channel] and CHANNEL_PERMISSIONS[session.channel].overview) then
+    return response(false, 'channel_forbidden')
+  end
+
+  local identity = MZBankBridge.ResolvePlayer(source, false)
+  if not identity then return response(false, 'player_not_loaded') end
+  if MZBankAccountService.IsEnabled() ~= true then
+    return response(false, 'public_account_unavailable')
+  end
+
+  local ensured = MZBankAccountService.EnsurePersonalAccount({ citizenid = identity.citizenid })
+  if type(ensured) ~= 'table' or ensured.ok ~= true or type(ensured.account) ~= 'table' then
+    return response(false, type(ensured) == 'table' and ensured.error or 'public_account_unavailable')
+  end
+  if MZBankAccountService.CanAccountPerform(ensured.account.status, 'read') ~= true then
+    return response(false, 'account_closed')
+  end
+  return response(true, nil, { account = ensured.account })
+end
+
+function MZBankService.GetChannelCapabilities(source, context)
+  context = type(context) == 'table' and context or {}
+  local session, sessionErr = validateSession(source, context.token, true)
+  if not session then return response(false, sessionErr) end
+
+  local configured = CHANNEL_PERMISSIONS[session.channel]
+  if type(configured) ~= 'table' then return response(false, 'channel_forbidden') end
+  local capabilities = {}
+  for name, allowed in pairs(configured) do capabilities[name] = allowed == true end
+  capabilities.cash = capabilities.withdraw == true or capabilities.deposit == true
+  return response(true, nil, {
+    channel = session.channel,
+    capabilities = capabilities
+  })
 end
 
 local function buildPublicResolutionActor(source, identity, session)
@@ -1048,6 +1092,12 @@ function MZBankService.GetCards(source, context)
   local identity = MZBankBridge.ResolvePlayer(source, false)
   if not identity then return response(false, 'player_not_loaded') end
   return response(true, nil, { cards = MZBankRepository.listCards(identity.citizenid) })
+end
+
+function MZBankService.IssueCard(source, context)
+  local _, sessionErr = validateBranchCardContext(source, context)
+  if sessionErr then return response(false, sessionErr) end
+  return issueCard(source, false)
 end
 
 function MZBankService.BlockCard(source, cardUidValue, context)

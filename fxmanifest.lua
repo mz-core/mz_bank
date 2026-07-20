@@ -28,12 +28,14 @@ server_scripts {
   'server/account_resolution.lua',
   'server/account_backfill.lua',
   'server/service.lua',
+  'server/api.lua',
   'server/legacy.lua',
   'server/main.lua',
   'server/p2b_runtime_runner.lua',
   'server/p2d_runtime_runner.lua',
   'server/p2e_runtime_runner.lua',
-  'server/p2f_runtime_runner.lua'
+  'server/p2f_runtime_runner.lua',
+  'server/p4_runtime_runner.lua'
 }
 
 ui_page 'html/index.html'

@@ -2,7 +2,7 @@
 
 ## Contratos oficiais usados
 
-O bridge `bridge/server.lua` usa somente exports diretos reais do `mz_core`: `GetPlayer`, `IsPlayerLoaded`, `EnsurePlayerLoaded`, `ResolvePlayerIdentity`, `GetMoney`, `NormalizeMoneyAccount`, `TransferMoneyBetweenAccounts`, `TransferBankBetweenPlayers`, `GetPlayerInventory`, `AddPlayerItem`, `RemoveMoney`, `AddMoney`, `RegisterItemUseHandler` e `CreateDetailedLog`.
+O bridge `bridge/server.lua` usa somente exports diretos reais do `mz_core`: `GetPlayer`, `IsPlayerLoaded`, `EnsurePlayerLoaded`, `ResolvePlayerIdentity`, `GetMoney`, `NormalizeMoneyAccount`, `TransferMoneyBetweenAccounts`, `TransferBankBetweenPlayers`, `GetOperationResult`, `GetPlayerInventory`, `AddPlayerItem`, `RemoveMoney`, `AddMoney`, `RegisterItemUseHandler` e `CreateDetailedLog`.
 
 A identidade bancaria nasce de uma unica leitura do player em cache (`GetPlayer`) e fica vinculada ao `citizenid` da sessao. `ResolvePlayerIdentity` e usado apenas como fallback para `firstname`/`lastname` quando o `charinfo` em cache estiver vazio; ele nunca substitui o `citizenid` da sessao.
 
@@ -24,17 +24,45 @@ As duas APIs financeiras adicionadas ao dominio de accounts retornam:
 
 Erros retornam `{ ok = false, error = 'codigo_estavel' }`. Todos os caminhos de alteracao do `mz_core` usam o mesmo lock por `citizenid`; transferencias entre players adquirem locks em ordem deterministica e persistem ambas as pontas em uma transacao antes de atualizar cache.
 
-## API server-side atual
+## API server-side versionada
 
-Os exports gerais atuais exigem contexto fisico autenticado. O token resolve a sessao e o canal no servidor; `context.channel` nao seleciona capacidade:
+`GetAPIVersion()` retorna a versao atual (`1`). Os demais exports exigem um `source` carregado,
+resource chamador autorizado e sessao/capability valida. Chamadores externos enviam
+`context.apiVersion = 1`. O token resolve a sessao e o canal no servidor; `context.channel` nao
+seleciona capacidade:
 
 ```lua
-exports['mz_bank']:GetAccountOverview(source, { token = token })
-exports['mz_bank']:GetStatement(source, { limit = 20 }, { token = token })
-exports['mz_bank']:GetCards(source, { token = branchToken })
-exports['mz_bank']:BlockCard(source, cardUid, { token = branchToken })
-exports['mz_bank']:RequestReplacementCard(source, { token = branchToken })
+local context = { apiVersion = 1, token = capabilityToken }
+exports['mz_bank']:GetAccountOverview(source, context)
+exports['mz_bank']:GetAccountStatement(source, { limit = 20 }, context)
+exports['mz_bank']:GetPublicAccount(source, context)
+exports['mz_bank']:ResolveTransferRecipient(source, route, context)
+exports['mz_bank']:Transfer(source, {
+  resolutionToken = resolutionToken,
+  amount = 10,
+  idempotencyKey = idempotencyKey
+}, context)
+exports['mz_bank']:GetCards(source, branchContext)
+exports['mz_bank']:BlockCard(source, cardRef, branchContext)
+exports['mz_bank']:IssueCard(source, branchContext)
+exports['mz_bank']:ReplaceCard(source, branchContext)
+exports['mz_bank']:GetChannelCapabilities(source, context)
+exports['mz_bank']:GetOperationResult(source, {
+  operation = 'transfer',
+  idempotencyKey = idempotencyKey
+}, context)
 ```
+
+`Withdraw` e `Deposit` tambem existem para o adaptador fisico oficial. `GetStatement` e
+`RequestReplacementCard` permanecem apenas como aliases de compatibilidade.
+
+`GetCards` devolve `cardRef`, ultimos quatro digitos, estado e timestamps publicos. O `cardRef`
+e opaco e vinculado ao `source` e token da listagem; `card_uid`, ID SQL, titular e metadata interna
+nao saem pela API. Emissao e substituicao tambem removem `cardUid` da resposta compartilhada.
+
+`GetOperationResult` aceita `withdraw`, `deposit` ou `transfer`, consulta a deduplicacao persistente
+no escopo real `mz_bank + jogador + idempotencyKey` e devolve somente confirmacao, correlationId,
+taxa e replay. Ele nao consulta nem altera saldo.
 
 O fluxo fisico de transferencia nao possui export client-facing. A NUI envia somente
 `branch`, `accountNumber` e `checkDigit` ao callback de resolucao; recebe um DTO mascarado e um
@@ -43,9 +71,12 @@ chave de idempotencia. O servidor resolve e revalida o `citizenid` internamente 
 servico financeiro oficial do `mz_core`.
 
 Server ID, `targetId`, `recipientValue` e `citizenid` nao fazem parte do contrato final da NUI.
-`GetCards`, `BlockCard` e `RequestReplacementCard` exigem uma sessao de agencia.
+`GetCards`, `IssueCard`, `BlockCard` e `ReplaceCard` exigem uma sessao de agencia.
 
-O canal `phone` esta desativado nesta fase. Uma integracao futura precisa de sessao/capability propria e nao pode reutilizar callbacks fisicos ou aceitar `source`/`citizenid` escolhidos pelo client.
+O `mz_phone` esta na allowlist server-to-server para integrar sem copiar logica. O canal `phone`
+continua fail-closed: a matriz fixa aceita `mz_phone -> phone` e rejeita token `atm/branch`, mesmo
+que ele seja valido para o jogador. Sem capability propria, o acesso e negado. A Fase 6
+deve criar sessao vinculada ao jogador e aparelho; ela nao pode aceitar `source`/`citizenid` do client.
 
 ## Extrato
 

@@ -185,6 +185,11 @@ local function safeServiceCall(handler, ...)
   return { ok = false, error = 'transaction_failed', message = Config.Locale.transaction_failed }
 end
 
+local function invokingResource()
+  local resource = type(GetInvokingResource) == 'function' and GetInvokingResource() or nil
+  return tostring(resource or '')
+end
+
 lib.callback.register('mz_bank:server:openSession', function(source, payload)
   return safeServiceCall(MZBankService.OpenSession, source, payload)
 end)
@@ -194,36 +199,36 @@ lib.callback.register('mz_bank:server:authenticate', function(source, token)
 end)
 
 lib.callback.register('mz_bank:server:overview', function(source, token)
-  return safeServiceCall(MZBankService.Refresh, source, token)
+  return safeServiceCall(MZBankAPI.GetAccountOverview, source, { token = token }, 'mz_bank')
 end)
 
 lib.callback.register('mz_bank:server:withdraw', function(source, token, payload)
   payload = type(payload) == 'table' and payload or {}
-  return safeServiceCall(MZBankService.Withdraw, source, token, payload.amount, payload.idempotencyKey)
+  return safeServiceCall(MZBankAPI.Withdraw, source, payload, { token = token }, 'mz_bank')
 end)
 
 lib.callback.register('mz_bank:server:deposit', function(source, token, payload)
   payload = type(payload) == 'table' and payload or {}
-  return safeServiceCall(MZBankService.Deposit, source, token, payload.amount, payload.idempotencyKey)
+  return safeServiceCall(MZBankAPI.Deposit, source, payload, { token = token }, 'mz_bank')
 end)
 
 lib.callback.register('mz_bank:server:resolveTransferRecipient', function(source, token, payload)
   payload = type(payload) == 'table' and payload or {}
-  return safeServiceCall(MZBankService.ResolvePublicRecipient, source, {
+  return safeServiceCall(MZBankAPI.ResolveTransferRecipient, source, {
     branch = payload.branch,
     accountNumber = payload.accountNumber,
     checkDigit = payload.checkDigit
-  }, { token = token })
+  }, { token = token }, 'mz_bank')
 end)
 
 lib.callback.register('mz_bank:server:transfer', function(source, token, payload)
   payload = type(payload) == 'table' and payload or {}
   return safeServiceCall(
-    MZBankService.TransferByPublicAccount,
+    MZBankAPI.Transfer,
     source,
-    payload.resolutionToken,
-    payload.amount,
-    { token = token, idempotencyKey = payload.idempotencyKey }
+    payload,
+    { token = token },
+    'mz_bank'
   )
 end)
 
@@ -233,12 +238,14 @@ end)
 
 AddEventHandler('playerDropped', function()
   MZBankService.CleanupSource(source)
+  MZBankAPI.CleanupSource(source)
 end)
 
 AddEventHandler('onResourceStop', function(resourceName)
   if resourceName == GetCurrentResourceName() then
     for _, playerId in ipairs(GetPlayers()) do
       MZBankService.CleanupSource(tonumber(playerId))
+      MZBankAPI.CleanupSource(tonumber(playerId))
     end
     return
   end
@@ -263,21 +270,66 @@ AddEventHandler('onResourceStart', function(resourceName)
 end)
 
 exports('GetAccountOverview', function(source, context)
-  return safeServiceCall(MZBankService.GetAccountOverview, source, context)
+  return safeServiceCall(MZBankAPI.GetAccountOverview, source, context, invokingResource())
 end)
 
+exports('GetAccountStatement', function(source, filters, context)
+  return safeServiceCall(MZBankAPI.GetAccountStatement, source, filters, context, invokingResource())
+end)
+
+-- Alias legado read-only; novos consumidores devem usar GetAccountStatement.
 exports('GetStatement', function(source, filters, context)
-  return safeServiceCall(MZBankService.GetStatement, source, filters, context)
+  return safeServiceCall(MZBankAPI.GetAccountStatement, source, filters, context, invokingResource())
+end)
+
+exports('GetPublicAccount', function(source, context)
+  return safeServiceCall(MZBankAPI.GetPublicAccount, source, context, invokingResource())
+end)
+
+exports('ResolveTransferRecipient', function(source, route, context)
+  return safeServiceCall(MZBankAPI.ResolveTransferRecipient, source, route, context, invokingResource())
+end)
+
+exports('Transfer', function(source, payload, context)
+  return safeServiceCall(MZBankAPI.Transfer, source, payload, context, invokingResource())
+end)
+
+exports('Withdraw', function(source, payload, context)
+  return safeServiceCall(MZBankAPI.Withdraw, source, payload, context, invokingResource())
+end)
+
+exports('Deposit', function(source, payload, context)
+  return safeServiceCall(MZBankAPI.Deposit, source, payload, context, invokingResource())
 end)
 
 exports('GetCards', function(source, context)
-  return safeServiceCall(MZBankService.GetCards, source, context)
+  return safeServiceCall(MZBankAPI.GetCards, source, context, invokingResource())
 end)
 
-exports('BlockCard', function(source, cardUid, context)
-  return safeServiceCall(MZBankService.BlockCard, source, cardUid, context)
+exports('IssueCard', function(source, context)
+  return safeServiceCall(MZBankAPI.IssueCard, source, context, invokingResource())
+end)
+
+exports('BlockCard', function(source, cardRef, context)
+  return safeServiceCall(MZBankAPI.BlockCard, source, cardRef, context, invokingResource())
+end)
+
+exports('ReplaceCard', function(source, context)
+  return safeServiceCall(MZBankAPI.ReplaceCard, source, context, invokingResource())
 end)
 
 exports('RequestReplacementCard', function(source, context)
-  return safeServiceCall(MZBankService.RequestReplacementCard, source, context)
+  return safeServiceCall(MZBankAPI.ReplaceCard, source, context, invokingResource())
+end)
+
+exports('GetChannelCapabilities', function(source, context)
+  return safeServiceCall(MZBankAPI.GetChannelCapabilities, source, context, invokingResource())
+end)
+
+exports('GetOperationResult', function(source, request, context)
+  return safeServiceCall(MZBankAPI.GetOperationResult, source, request, context, invokingResource())
+end)
+
+exports('GetAPIVersion', function()
+  return MZBankAPI.GetVersion()
 end)

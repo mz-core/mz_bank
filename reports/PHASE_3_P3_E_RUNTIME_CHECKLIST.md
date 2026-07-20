@@ -124,13 +124,13 @@ Esperado: `processed`, um recibo, duas pernas e auditorias sem correlationId/cit
 
 | ID | Teste | Resultado esperado | Status |
 |---|---|---|---|
-| P3E-01 | administração desligada | comando inexistente | NÃO EXECUTADO |
+| P3E-01 | administração desligada | comando inexistente | APROVADO — usuário confirmou o teardown com administração/runner/apply desligados e comando indisponível |
 | P3E-02 | ACE ausente | acesso negado | APROVADO — console sem a ACE específica recebeu `admin_forbidden` |
 | P3E-03 | reconcile | read-only, divergências corretas | APROVADO — após restaurar P3-D/P3-C e iniciar `mz_core -> mz_economy`, o backlog foi drenado; retorno final com `overdue_pending=0`, todas as divergências em zero, `read_only=true` e `balance_changes=false` |
-| P3E-04 | seletor inexistente | resposta mínima, zero mudança | NÃO EXECUTADO |
+| P3E-04 | seletor inexistente | resposta mínima, zero mudança | APROVADO — runner negativo retornou o resultado esperado, sem escrita |
 | P3E-05 | preview válido | ref temporária, sem payload/PII | APROVADO — `outbox_id=4`, ref opaca com TTL 120, `state_changed=false`, `balance_changes=false` e `payload_changes=false` |
-| P3E-06 | apply desligado/frase errada | negado, zero mudança | APROVADO PARCIAL — gate `apply=0` negou com `reprocess_apply_disabled` e zero mudança; frase errada ainda não executada |
-| P3E-07 | ator divergente/expiração | negado, zero mudança | NÃO EXECUTADO |
+| P3E-06 | apply desligado/frase errada | negado, zero mudança | APROVADO — gate `apply=0` e confirmação incorreta foram negados sem mudança |
+| P3E-07 | ator divergente/expiração | negado, zero mudança | APROVADO — runner confirmou negação por ator divergente e preview expirado |
 | P3E-08 | reprocesso válido | requeued e depois processed | APROVADO — transição para `requeued`, dispatcher confirmou `consumer_replay=true` e a outbox voltou a `processed` |
 | P3E-09 | replay da ref | negado; zero reprocesso novo | APROVADO — usuário confirmou o retorno esperado ao reutilizar a referência consumida |
 | P3E-10 | recibo/ledger/saldo | 1 recibo, 2 pernas, saldo intacto | APROVADO — consulta final confirmou `receipts=1`, `ledger_entries=2`; replay não duplicou a movimentação |
@@ -138,6 +138,33 @@ Esperado: `processed`, um recibo, duas pernas e auditorias sem correlationId/cit
 | P3E-12 | retenção | reportada, nenhuma exclusão | APROVADO — reconcile reportou `retention_eligible=0`, permaneceu read-only e não executou purge |
 
 ## 7. Encerramento
+
+### 7.1 Runner negativo consolidado
+
+Os gates restantes `P3E-04`, confirmação errada de `P3E-06` e ator/expiração de `P3E-07` podem
+ser executados sem fixture SQL pelo runner server-side temporário:
+
+```text
+set mz_core_p3e_runtime_runner 1
+set mz_core_p3e_reprocess_apply 0
+restart mz_core
+ensure mz_economy
+mz_core_p3e_runtime_test
+```
+
+O runner usa somente previews sintéticos em memória para os guardas que terminam antes do banco.
+Ele faz uma busca inexistente read-only, compara as contagens da outbox antes/depois, não lê saldo,
+não escreve ledger/outbox e restaura automaticamente a convar de apply ao valor anterior.
+
+Depois da execução:
+
+```text
+set mz_core_p3e_runtime_runner 0
+set mz_core_p3e_reprocess_apply 0
+```
+
+O caso `P3E-01` foi concluído manualmente: `administration.enabled=false`, restart do `mz_core` e
+comando `mz_core_outbox` indisponível, conforme confirmação do usuário.
 
 ```text
 set mz_core_p3e_reprocess_apply 0
@@ -147,8 +174,8 @@ Restaurar `administration.enabled=false`, reiniciar `mz_core` e confirmar que `m
 de existir. Não apagar outbox, recibos, ledger ou auditoria. Não iniciar P3-F nesta validação.
 
 ```text
-P3-E: [S] Validado estaticamente
-Runtime: EM EXECUÇÃO — 8 aprovados, 1 aprovado parcial, 0 falhas financeiras, 0 bloqueados, 3 não executados
+P3-E: [R] Aprovado em runtime no escopo funcional
+Runtime: CONCLUÍDO — 12 aprovados, 0 falhas financeiras, 0 bloqueados, 0 não executados
 Fase 3: [~] Em implementação
 ```
 
@@ -178,3 +205,14 @@ com apply desligado, transição `dead_letter -> pending`, ACK com `consumer_rep
 `error=audit_after_failed`; a causa foi a expressão Lua ambígua `afterAudit and nil or ...`, que
 produzia o texto de erro mesmo no caminho verdadeiro. A expressão foi substituída por atribuição
 condicional explícita; a correção ainda requer reload e uma validação focal do retorno.
+
+O usuário informou que o runner negativo consolidado foi executado manualmente no FiveM staging e
+retornou o resultado esperado. Foram aprovados `P3E-04`, a confirmação incorreta de `P3E-06`, ator e
+expiração de `P3E-07`, além da invariável de contagens da outbox sem alteração, sem leitura de saldo
+e sem escrita de ledger. O log integral não foi anexado; nenhum detalhe adicional foi inferido.
+
+No encerramento, o usuário confirmou o resultado esperado após desligar administração, runner e
+gate de apply. O caso `P3E-01` foi aprovado e o lote encerrou com 12 de 12 casos funcionais, zero
+falhas financeiras e zero bloqueados. A correção do falso texto `audit_after_failed` foi carregada e
+validada estaticamente; uma nova transição positiva dedicada não foi repetida e permanece como delta
+de observação para o end-to-end P3-G.
