@@ -20,6 +20,9 @@ Config.TransactionLimits = {
     withdraw = 1000000,
     deposit = 1000000,
     transfer = 1000000
+  },
+  phone = {
+    transfer = 1000000
   }
 }
 -- Nao existe limite diario nesta fase; somente os limites por operacao acima.
@@ -34,8 +37,7 @@ Config.DebugAce = 'group.mz_owner'
 
 -- API server-to-server compartilhada. A allowlist autoriza somente o resource
 -- chamador; cada operacao continua exigindo uma sessao/capability valida do
--- canal efetivo. O mz_phone fica preparado para a Fase 6, mas nao recebe
--- capacidade phone antecipadamente nesta fase.
+-- canal efetivo. O mz_phone usa exclusivamente a sessao phone server-side.
 Config.SharedAPI = {
   Version = 1,
   AllowedResources = {
@@ -46,6 +48,17 @@ Config.SharedAPI = {
     mz_bank = { atm = true, branch = true },
     mz_phone = { phone = true }
   }
+}
+
+-- Sessao exclusiva do aplicativo bancario. O deviceId e resolvido pelo
+-- mz_phone no servidor e nunca e aceito da NUI. O canal permite consultas,
+-- transferencia e bloqueio de cartao; saque, deposito, emissao e segunda via
+-- continuam fail-closed.
+Config.PhoneChannel = {
+  Enabled = true,
+  SessionTimeoutSeconds = 120,
+  DeviceIdMaxLength = 32,
+  MaxStatementLimit = 50
 }
 
 -- Identidade bancaria publica (Fase 2). A feature aprovada permanece ativa

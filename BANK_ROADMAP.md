@@ -887,12 +887,62 @@ PIN permanece desativado até existir:
 
 # Fase 6 — Aplicativo bancário no `mz_phone`
 
-**Status:** `[ ] Não iniciada`
+**Status:** `[R] Aprovada em runtime`
+
+**P6-A — consultas reais (2026-07-19):** `[R]` aprovado em runtime. Foi implementada uma
+sessão exclusiva do canal `phone`, vinculada no servidor ao jogador e ao aparelho, com saldo,
+conta pública, extrato e cartões em modo somente leitura. Token, `citizenid`, IDs internos e
+segredos não chegam à NUI. Transferência, saque, depósito, emissão, bloqueio e substituição
+permanecem fail-closed neste lote. O usuário confirmou no FiveM a carga dos dados reais e o estado
+indisponível sem encerrar o restante do telefone quando `mz_bank` está parado.
+
+**P6-B — transferência pelo telefone (2026-07-19):** `[R]` aprovado em runtime. O aplicativo
+resolve o destinatário exclusivamente por agência, conta pública e dígito, mostra nome parcial e
+rota mascarada, exige confirmação e executa a transferência oficial idempotente. O
+`resolutionToken`, a chave idempotente e os identificadores internos permanecem somente no
+servidor. O comprovante usa o `correlationId` oficial. O usuário confirmou manualmente no FiveM a
+transferência com os dois jogadores online e a ausência de duplicidade por duplo clique. A negação
+de destinatário offline também foi confirmada. Zero falhas pendentes conhecidas foram informadas;
+não foram fornecidos logs ou evidências SQL adicionais.
+
+**P6-C — cartões no telefone (2026-07-19):** `[R]` aprovado em runtime. O aplicativo lista
+somente o DTO sanitizado do próprio titular e permite bloquear cartão `active` após confirmação
+explícita. A NUI recebe apenas `cardRef` opaco, últimos quatro dígitos, estado e datas públicas; a
+credencial persistida, titular interno e metadata permanecem no servidor. O comando é vinculado à
+sessão `phone`, revalida o personagem, altera somente a credencial oficial e invalida sessões
+físicas que utilizavam o cartão. O usuário confirmou manualmente no FiveM a mudança para
+`blocked`, a recusa posterior no ATM e a preservação do saldo. Isolamento e referência falsa foram
+consolidados das aprovações das Fases 4 e 5, sem repetição. Emissão, desbloqueio e segunda via
+continuam fora do telefone. Zero falhas pendentes conhecidas foram informadas.
+
+**P6-D — favoritos bancários (2026-07-19):** `[R]` aprovado em runtime. Um favorito só pode ser
+criado a partir de uma transferência confirmada e persiste no domínio de preferências do
+`mz_phone`, sem saldo e sem `citizenid` do destinatário. A NUI recebe apenas referência opaca,
+apelido, agência e conta mascarada. Cada uso resolve novamente a rota pública pelo `mz_bank`, exige
+destinatário online e passa pela mesma confirmação/idempotência do P6-B. O usuário confirmou no
+MySQL/FiveM staging o ciclo de salvar, persistir, usar e remover o favorito. Zero falhas pendentes
+conhecidas foram informadas; não foram fornecidos logs ou queries adicionais.
+
+**P6-E — notificações bancárias (2026-07-20):** `[R]` aprovado em runtime.
+Transferências confirmadas no canal `phone` geram avisos persistentes de envio e recebimento no
+`mz_phone`. Cada ponta é deduplicada no MySQL pelo `correlationId` oficial, portanto replay,
+recuperação após timeout e duplo clique não criam avisos repetidos. O contrato é exclusivamente
+server-side, aceita somente chamada do `mz_bank` e resolve os dois personagens no servidor. A NUI
+recebe apenas título, valor e direção; não recebe `citizenid`, `source`, saldo ou rota. Falha ou
+indisponibilidade do telefone é registrada depois do commit e nunca altera o resultado financeiro.
+O usuário confirmou manualmente no FiveM staging os dois avisos sem duplicidade e uma única
+movimentação. Não foram fornecidos logs, capturas ou resultado da query SQL de conferência.
+
+**Limpeza de produção (2026-07-20):** `[R]` aprovada após smoke final. Os dez
+runners de staging foram removidos do `mz_bank` e `mz_core`, junto com comandos, convars e hooks
+de fault injection. Relatórios e evidências históricas foram preservados. Backfill com preview e
+administração ACE da outbox permanecem por serem ferramentas operacionais fail-closed. A ordem
+canônica agora inicia `mz_phone` depois de `mz_bank`. O usuário executou o smoke único e informou
+“certinho”; nenhum log, captura ou query adicional foi fornecido.
 
 **Preparação de frontend (2026-07-15):** o shell demonstrativo do `mz_phone` foi removido do
-fluxo de produção. Enquanto não existirem os gates e contratos abaixo, o app permanece
-fail-closed, sem dados fictícios, callbacks bancários ou operações. Esta preparação não inicia
-nem aprova a Fase 6.
+fluxo de produção. Os gates reais foram implementados e aprovados nos lotes P6-A a P6-E; nenhum
+dado fictício voltou ao fluxo final.
 
 ## Dependências
 
@@ -941,13 +991,13 @@ O telefone não:
 
 ## Critérios de aprovação
 
-- [ ] App usa somente a API oficial.
-- [ ] Sessão falsa ou de outro aparelho é negada.
-- [ ] Canal adulterado é negado.
-- [ ] Transferência é idempotente.
-- [ ] Comprovante corresponde ao ledger.
-- [ ] Bloqueio de cartão afeta o ATM conforme contrato.
-- [ ] Nenhuma lógica financeira é duplicada.
+- [x] App usa somente a API oficial.
+- [x] Sessão falsa ou de outro aparelho é negada.
+- [x] Canal adulterado é negado.
+- [x] Transferência é idempotente.
+- [x] Comprovante corresponde ao ledger.
+- [x] Bloqueio de cartão afeta o ATM conforme contrato.
+- [x] Nenhuma lógica financeira é duplicada.
 
 ---
 

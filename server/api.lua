@@ -77,7 +77,11 @@ end
 local function authorize(source, callerResource, context)
   local caller, err = validateCaller(callerResource, context)
   if not caller then return nil, response(false, err) end
-  local capability = MZBankService.GetChannelCapabilities(source, context)
+  local service = caller == 'mz_phone' and MZBankPhoneService or MZBankService
+  if type(service) ~= 'table' or type(service.GetChannelCapabilities) ~= 'function' then
+    return nil, response(false, 'bank_unavailable')
+  end
+  local capability = service.GetChannelCapabilities(source, context)
   if type(capability) ~= 'table' or capability.ok ~= true then
     return nil, normalizeResult(capability)
   end
@@ -86,7 +90,11 @@ local function authorize(source, callerResource, context)
   if type(allowedChannels) ~= 'table' or allowedChannels[channel] ~= true then
     return nil, response(false, 'channel_forbidden')
   end
-  return caller, nil, capability
+  return caller, nil, capability, service
+end
+
+local function phoneCommandForbidden(caller)
+  return caller == 'mz_phone' and response(false, 'channel_forbidden') or nil
 end
 
 local function opaqueCardReference(source, sessionToken, index)
@@ -99,10 +107,12 @@ local function opaqueCardReference(source, sessionToken, index)
 end
 
 local function safeCardDto(row, cardRef)
+  local status = tostring(row.status or '')
   return {
     cardRef = cardRef,
     last4 = tostring(row.last4 or ''),
-    status = tostring(row.status or ''),
+    status = status,
+    canBlock = status == 'active',
     issuedAt = row.issued_at,
     updatedAt = row.updated_at,
     blockedAt = row.blocked_at
@@ -122,44 +132,64 @@ function MZBankAPI.GetVersion()
   }
 end
 
+function MZBankAPI.OpenPhoneSession(source, request, callerResource)
+  local caller, err = validateCaller(callerResource, request)
+  if not caller then return response(false, err) end
+  if caller ~= 'mz_phone' then return response(false, 'channel_forbidden') end
+  return normalizeResult(MZBankPhoneService.OpenSession(source, request))
+end
+
+function MZBankAPI.ClosePhoneSession(source, context, callerResource)
+  local caller, err = validateCaller(callerResource, context)
+  if not caller then return response(false, err) end
+  if caller ~= 'mz_phone' then return response(false, 'channel_forbidden') end
+  clearCardReferences(source)
+  return normalizeResult(MZBankPhoneService.CloseSession(source, context, 'phone_resource_close'))
+end
+
 function MZBankAPI.GetAccountOverview(source, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local _, denied, _, service = authorize(source, callerResource, context)
   if denied then return denied end
-  return normalizeResult(MZBankService.Refresh(source, context and context.token))
+  if service == MZBankPhoneService then
+    return normalizeResult(service.Refresh(source, context))
+  end
+  return normalizeResult(service.Refresh(source, context and context.token))
 end
 
 function MZBankAPI.GetAccountStatement(source, filters, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local _, denied, _, service = authorize(source, callerResource, context)
   if denied then return denied end
-  return normalizeResult(MZBankService.GetStatement(source, filters, context))
+  return normalizeResult(service.GetStatement(source, filters, context))
 end
 
 function MZBankAPI.GetPublicAccount(source, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local _, denied, _, service = authorize(source, callerResource, context)
   if denied then return denied end
-  return normalizeResult(MZBankService.GetPublicAccount(source, context))
+  return normalizeResult(service.GetPublicAccount(source, context))
 end
 
 function MZBankAPI.ResolveTransferRecipient(source, route, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local _, denied, _, service = authorize(source, callerResource, context)
   if denied then return denied end
-  return normalizeResult(MZBankService.ResolvePublicRecipient(source, route, context))
+  return normalizeResult(service.ResolvePublicRecipient(source, route, context))
 end
 
 function MZBankAPI.Transfer(source, payload, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local _, denied, _, service = authorize(source, callerResource, context)
   if denied then return denied end
   payload = type(payload) == 'table' and payload or {}
   context = type(context) == 'table' and context or {}
   context.idempotencyKey = payload.idempotencyKey
-  return normalizeResult(MZBankService.TransferByPublicAccount(
+  return normalizeResult(service.TransferByPublicAccount(
     source, payload.resolutionToken, payload.amount, context
   ))
 end
 
 function MZBankAPI.Withdraw(source, payload, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local caller, denied = authorize(source, callerResource, context)
   if denied then return denied end
+  local forbidden = phoneCommandForbidden(caller)
+  if forbidden then return forbidden end
   payload = type(payload) == 'table' and payload or {}
   return normalizeResult(MZBankService.Withdraw(
     source, context and context.token, payload.amount, payload.idempotencyKey
@@ -167,8 +197,10 @@ function MZBankAPI.Withdraw(source, payload, context, callerResource)
 end
 
 function MZBankAPI.Deposit(source, payload, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local caller, denied = authorize(source, callerResource, context)
   if denied then return denied end
+  local forbidden = phoneCommandForbidden(caller)
+  if forbidden then return forbidden end
   payload = type(payload) == 'table' and payload or {}
   return normalizeResult(MZBankService.Deposit(
     source, context and context.token, payload.amount, payload.idempotencyKey
@@ -176,9 +208,9 @@ function MZBankAPI.Deposit(source, payload, context, callerResource)
 end
 
 function MZBankAPI.GetCards(source, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local _, denied, _, service = authorize(source, callerResource, context)
   if denied then return denied end
-  local result = MZBankService.GetCards(source, context)
+  local result = service.GetCards(source, context)
   if type(result) ~= 'table' or result.ok ~= true then return normalizeResult(result) end
 
   clearCardReferences(source)
@@ -195,8 +227,10 @@ function MZBankAPI.GetCards(source, context, callerResource)
 end
 
 function MZBankAPI.IssueCard(source, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local caller, denied = authorize(source, callerResource, context)
   if denied then return denied end
+  local forbidden = phoneCommandForbidden(caller)
+  if forbidden then return forbidden end
   local result = MZBankService.IssueCard(source, context)
   if type(result) == 'table' and type(result.data) == 'table' then
     result.data.cardUid = nil
@@ -206,21 +240,24 @@ function MZBankAPI.IssueCard(source, context, callerResource)
 end
 
 function MZBankAPI.BlockCard(source, cardRef, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local _, denied, _, service = authorize(source, callerResource, context)
   if denied then return denied end
   local sourceRefs = CardReferences[tonumber(source) or source]
   local resolved = type(sourceRefs) == 'table' and sourceRefs[tostring(cardRef or '')] or nil
   if not resolved or resolved.token ~= tostring(type(context) == 'table' and context.token or '') then
     return response(false, 'card_invalid')
   end
-  local result = MZBankService.BlockCard(source, resolved.uid, context)
+  if type(service.BlockCard) ~= 'function' then return response(false, 'channel_forbidden') end
+  local result = service.BlockCard(source, resolved.uid, context)
   clearCardReferences(source)
   return normalizeResult(result)
 end
 
 function MZBankAPI.ReplaceCard(source, context, callerResource)
-  local _, denied = authorize(source, callerResource, context)
+  local caller, denied = authorize(source, callerResource, context)
   if denied then return denied end
+  local forbidden = phoneCommandForbidden(caller)
+  if forbidden then return forbidden end
   local result = MZBankService.RequestReplacementCard(source, context)
   if type(result) == 'table' and type(result.data) == 'table' then
     result.data.cardUid = nil
@@ -265,4 +302,7 @@ end
 
 function MZBankAPI.CleanupSource(source)
   clearCardReferences(source)
+  if type(MZBankPhoneService) == 'table' and type(MZBankPhoneService.CleanupSource) == 'function' then
+    MZBankPhoneService.CleanupSource(source)
+  end
 end

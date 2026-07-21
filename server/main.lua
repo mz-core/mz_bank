@@ -273,6 +273,14 @@ exports('GetAccountOverview', function(source, context)
   return safeServiceCall(MZBankAPI.GetAccountOverview, source, context, invokingResource())
 end)
 
+exports('OpenPhoneSession', function(source, request)
+  return safeServiceCall(MZBankAPI.OpenPhoneSession, source, request, invokingResource())
+end)
+
+exports('ClosePhoneSession', function(source, context)
+  return safeServiceCall(MZBankAPI.ClosePhoneSession, source, context, invokingResource())
+end)
+
 exports('GetAccountStatement', function(source, filters, context)
   return safeServiceCall(MZBankAPI.GetAccountStatement, source, filters, context, invokingResource())
 end)

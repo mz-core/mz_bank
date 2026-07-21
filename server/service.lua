@@ -456,6 +456,10 @@ function MZBankService.SetReady(value)
   ready = value == true
 end
 
+function MZBankService.IsReady()
+  return ready == true
+end
+
 function MZBankService.OpenSession(source, payload)
   if not ready then return response(false, 'bank_unavailable') end
   if rateLimited(source, 'open', Config.RateLimit.openMs) then
@@ -828,7 +832,16 @@ local function confirmedFinancialResponse(source, token, session, operation, amo
     end
   end
 
-  local overview = MZBankService.GetAccountOverview(source, { token = token })
+  local overview
+  if session.channel == 'phone' and type(MZBankPhoneService) == 'table'
+      and type(MZBankPhoneService.GetAccountOverview) == 'function' then
+    overview = MZBankPhoneService.GetAccountOverview(source, {
+      token = token,
+      deviceId = session.deviceId
+    })
+  else
+    overview = MZBankService.GetAccountOverview(source, { token = token })
+  end
   if overview.ok == true and type(overview.data) == 'table' then
     for key, value in pairs(overview.data) do data[key] = value end
   else
@@ -936,6 +949,50 @@ local function consumePublicResolution(actor, resolutionToken)
   return false
 end
 
+local function persistPhoneTransferNotifications(source, targetSource, amount, session, result)
+  if type(session) ~= 'table' or session.channel ~= 'phone' then return end
+  targetSource = tonumber(targetSource)
+  if not targetSource or targetSource <= 0 then
+    MZBankBridge.Log('bank.phone.notification.failed', source, { reason = 'target_unavailable' })
+    return
+  end
+  if GetResourceState('mz_phone') ~= 'started' then
+    MZBankBridge.Log('bank.phone.notification.skipped', source, { reason = 'phone_unavailable' })
+    return
+  end
+
+  local correlationId = tostring(result.transactionRef or result.correlationId or '')
+  if correlationId == '' then
+    MZBankBridge.Log('bank.phone.notification.failed', source, { reason = 'reference_unavailable' })
+    return
+  end
+
+  local ok, notificationResult = pcall(function()
+    return exports['mz_phone']:CreateBankTransferNotifications({
+      senderSource = source,
+      targetSource = targetSource,
+      amount = amount,
+      correlationId = correlationId,
+      replayed = result.replayed == true
+    })
+  end)
+  if not ok or type(notificationResult) ~= 'table' or notificationResult.ok ~= true then
+    MZBankBridge.Log('bank.phone.notification.failed', source, {
+      reason = ok and tostring(notificationResult and notificationResult.error or 'invalid_response')
+        or 'export_failed',
+      transaction_ref = correlationId
+    })
+    return
+  end
+
+  MZBankBridge.Log('bank.phone.notification.persisted', source, {
+    created = tonumber(notificationResult.created) or 0,
+    duplicates = tonumber(notificationResult.duplicates) or 0,
+    replayed = result.replayed == true,
+    transaction_ref = correlationId
+  })
+end
+
 local function executePublicAccountTransfer(
   source, resolutionToken, rawAmount, idempotencyKey, session
 )
@@ -1007,6 +1064,7 @@ local function executePublicAccountTransfer(
 
     consumePublicResolution(actor, resolutionToken)
     local targetSource = tonumber(result.targetSource or resolved.targetSource)
+    persistPhoneTransferNotifications(source, targetSource, amount, session, result)
     if result.replayed ~= true and targetSource and targetSource > 0 then
       MZBankBridge.Notify(targetSource, ('Voce recebeu %s%s de %s.'):format(
         Config.CurrencySymbol, amount, MZBankBridge.GetDisplayName(source)
@@ -1028,6 +1086,24 @@ local function executePublicAccountTransfer(
     )
 end
 
+-- Contrato estritamente interno do resource. A sessao recebida ja foi
+-- validada pelo controlador do canal (fisico ou phone); nenhuma superficie
+-- publica chama esta funcao diretamente.
+function MZBankService.TransferByValidatedSession(
+  source, resolutionToken, rawAmount, rawIdempotencyKey, session
+)
+  local idempotencyKey, idempotencyErr = validateIdempotencyKey(rawIdempotencyKey)
+  if not idempotencyKey then return response(false, idempotencyErr) end
+  if type(session) ~= 'table' or session.authenticated ~= true
+      or type(session.token) ~= 'string' or session.token == ''
+      or (session.channel ~= 'atm' and session.channel ~= 'branch' and session.channel ~= 'phone') then
+    return response(false, 'invalid_session')
+  end
+  return executePublicAccountTransfer(
+    source, resolutionToken, rawAmount, idempotencyKey, session
+  )
+end
+
 -- P2-G: contrato financeiro consumido pelo callback fisico apos confirmacao.
 function MZBankService.TransferByPublicAccount(source, resolutionToken, rawAmount, context)
   context = type(context) == 'table' and context or {}
@@ -1035,44 +1111,10 @@ function MZBankService.TransferByPublicAccount(source, resolutionToken, rawAmoun
   if not idempotencyKey then return response(false, idempotencyErr) end
 
   return runOperation(source, context.token, 'transfer', idempotencyKey, function(session)
-    return executePublicAccountTransfer(
+    return MZBankService.TransferByValidatedSession(
       source, resolutionToken, rawAmount, idempotencyKey, session
     )
   end)
-end
-
--- Superficie estritamente interna para o runner temporario. Com a convar
--- desligada as funcoes nem sequer existem. Nao ha export/evento/callback.
-if GetConvarInt('mz_bank_p2f_runtime_runner', 0) == 1 then
-  function MZBankService.GetP2FRuntimeSession(source)
-    source = tonumber(source)
-    local existing = source and Sessions[source] or nil
-    if not existing then return nil, 'invalid_session' end
-    local session, sessionError = validateSession(source, existing.token, true)
-    if not session then return nil, sessionError end
-    return {
-      token = session.token,
-      citizenid = session.citizenid,
-      channel = session.channel,
-      coords = cloneCoords(session.coords),
-      authenticated = session.authenticated == true
-    }
-  end
-
-  function MZBankService.ExecuteP2FRuntimeFixture(
-    source, resolutionToken, rawAmount, rawIdempotencyKey, session
-  )
-    local idempotencyKey, idempotencyError = validateIdempotencyKey(rawIdempotencyKey)
-    if not idempotencyKey then return response(false, idempotencyError) end
-    if type(session) ~= 'table' or session.authenticated ~= true
-        or (session.channel ~= 'atm' and session.channel ~= 'branch')
-        or type(session.token) ~= 'string' or session.token == '' then
-      return response(false, 'invalid_session')
-    end
-    return executePublicAccountTransfer(
-      source, resolutionToken, rawAmount, idempotencyKey, session
-    )
-  end
 end
 
 local function validateBranchCardContext(source, context)
@@ -1100,15 +1142,31 @@ function MZBankService.IssueCard(source, context)
   return issueCard(source, false)
 end
 
+function MZBankService.BlockCardForValidatedIdentity(source, cardUidValue, identity, channel)
+  channel = tostring(channel or '')
+  if channel ~= 'branch' and channel ~= 'phone' then
+    return response(false, 'channel_forbidden')
+  end
+  if type(identity) ~= 'table' or tostring(identity.citizenid or '') == '' then
+    return response(false, 'player_not_loaded')
+  end
+  cardUidValue = tostring(cardUidValue or '')
+  if cardUidValue == ''
+      or not MZBankRepository.blockCard(identity.citizenid, cardUidValue) then
+    return response(false, 'card_invalid')
+  end
+  invalidateCardSessions(identity.citizenid, cardUidValue, nil)
+  MZBankBridge.Log('bank.card.blocked', source, { channel = channel })
+  return response(true, nil, nil, Config.Locale.card_blocked_success)
+end
+
 function MZBankService.BlockCard(source, cardUidValue, context)
   local _, sessionErr = validateBranchCardContext(source, context)
   if sessionErr then return response(false, sessionErr) end
   local identity = MZBankBridge.ResolvePlayer(source, false)
-  if not identity then return response(false, 'player_not_loaded') end
-  if not MZBankRepository.blockCard(identity.citizenid, tostring(cardUidValue or '')) then return response(false, 'card_invalid') end
-  invalidateCardSessions(identity.citizenid, cardUidValue, nil)
-  MZBankBridge.Log('bank.card.blocked', source, { channel = 'branch' })
-  return response(true, nil, nil, Config.Locale.card_blocked_success)
+  return MZBankService.BlockCardForValidatedIdentity(
+    source, cardUidValue, identity, 'branch'
+  )
 end
 
 function MZBankService.RequestReplacementCard(source, context)

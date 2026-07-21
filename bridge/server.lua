@@ -225,13 +225,6 @@ function MZBankBridge.AddBankCard(source, metadata)
   source = tonumber(source)
   if not source or source <= 0 then return false, 'invalid_source' end
 
-  local p3fRunnerEnabled = GetConvarInt('mz_bank_p3f_runtime_runner', 0) == 1
-  local forcedFailureSource = GetConvarInt('mz_bank_p3f_fail_card_delivery_source', 0)
-  if p3fRunnerEnabled and forcedFailureSource == source then
-    print(('[mz_bank][p3f-runner] forced card delivery failure source=%s writes=inventory_denied'):format(source))
-    return false, 'inventory_full'
-  end
-
   local callOk, ok, resultOrErr = pcall(function()
     return exports['mz_core']:AddPlayerItem(source, Config.Card.ItemName, 1, metadata)
   end)

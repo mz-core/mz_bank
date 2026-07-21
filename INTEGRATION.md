@@ -42,8 +42,8 @@ exports['mz_bank']:Transfer(source, {
   amount = 10,
   idempotencyKey = idempotencyKey
 }, context)
-exports['mz_bank']:GetCards(source, branchContext)
-exports['mz_bank']:BlockCard(source, cardRef, branchContext)
+exports['mz_bank']:GetCards(source, sessionContext)
+exports['mz_bank']:BlockCard(source, cardRef, sessionContext)
 exports['mz_bank']:IssueCard(source, branchContext)
 exports['mz_bank']:ReplaceCard(source, branchContext)
 exports['mz_bank']:GetChannelCapabilities(source, context)
@@ -71,12 +71,24 @@ chave de idempotencia. O servidor resolve e revalida o `citizenid` internamente 
 servico financeiro oficial do `mz_core`.
 
 Server ID, `targetId`, `recipientValue` e `citizenid` nao fazem parte do contrato final da NUI.
-`GetCards`, `IssueCard`, `BlockCard` e `ReplaceCard` exigem uma sessao de agencia.
+`GetCards` aceita sessao de agencia ou telefone; `BlockCard` aceita os dois canais e exige o
+`cardRef` opaco emitido para a mesma sessao. `IssueCard` e `ReplaceCard` continuam exclusivos da
+agencia.
 
-O `mz_phone` esta na allowlist server-to-server para integrar sem copiar logica. O canal `phone`
-continua fail-closed: a matriz fixa aceita `mz_phone -> phone` e rejeita token `atm/branch`, mesmo
-que ele seja valido para o jogador. Sem capability propria, o acesso e negado. A Fase 6
-deve criar sessao vinculada ao jogador e aparelho; ela nao pode aceitar `source`/`citizenid` do client.
+O `mz_phone` esta na allowlist server-to-server e usa sessao propria do canal `phone`, vinculada ao
+source, personagem e aparelho resolvidos no servidor. A matriz fixa aceita `mz_phone -> phone` e
+rejeita token `atm/branch`, mesmo que ele seja valido para o jogador. O token da sessao,
+`resolutionToken` e `idempotencyKey` permanecem server-side; o client nao envia `source`,
+`citizenid` ou canal. O P6-C libera overview, extrato, cartoes, transferencia por conta publica e
+bloqueio de cartao ativo. Saque, deposito, emissao e substituicao continuam fail-closed no canal
+phone.
+
+Depois de uma transferencia confirmada no canal `phone`, o `mz_bank` chama o contrato server-side
+`mz_phone:CreateBankTransferNotifications`. O telefone revalida os dois sources, persiste uma
+notificacao de saida e uma de entrada e usa `(citizenid, dedupe_key)` para deduplicar cada ponta
+pelo `correlationId` oficial. A chamada ocorre depois do commit: indisponibilidade ou falha no
+`mz_phone` e apenas auditada e nunca converte sucesso financeiro em falha. Replay pode recuperar
+uma notificacao ausente, mas nao exibe nem persiste duplicata.
 
 ## Extrato
 
@@ -90,7 +102,7 @@ O servidor valida ped, vida, veiculo, personagem e distancia. O token e invalida
 
 ## Valores, limites e taxa
 
-Saque, deposito e transferencia aceitam somente `number` inteiro, positivo e finito. Texto numerico, decimal, zero, negativo, `NaN` e infinito sao rejeitados; nenhum valor e truncado. `Config.TransactionLimits` define separadamente saque, deposito e transferencia para `atm` e `branch`, atualmente em `1.000.000` por operacao. O teto efetivo tambem fica limitado ao maior inteiro seguro do runtime (`9.007.199.254.740.991`), abaixo do `BIGINT` assinado usado por `mz_player_accounts`.
+Saque, deposito e transferencia aceitam somente `number` inteiro, positivo e finito. Texto numerico, decimal, zero, negativo, `NaN` e infinito sao rejeitados; nenhum valor e truncado. `Config.TransactionLimits` define separadamente saque, deposito e transferencia para `atm` e `branch`, e somente transferencia para `phone`, atualmente em `1.000.000` por operacao. O teto efetivo tambem fica limitado ao maior inteiro seguro do runtime (`9.007.199.254.740.991`), abaixo do `BIGINT` assinado usado por `mz_player_accounts`.
 
 Nao existe limite diario nesta fase (`Config.DailyTransactionLimit = false`). A taxa atual e `0%`. Se configurada acima de zero, o core debita `valor + taxa` do remetente, credita somente `valor` ao destinatario e a taxa e calculada por `floor(valor * percentual / 100)`; portanto, o arredondamento e sempre para baixo e o resultado continua inteiro.
 

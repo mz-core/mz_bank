@@ -59,7 +59,7 @@ local function copyActor(value)
   if not source or source <= 0 or source ~= math.floor(source)
       or not citizenid or #citizenid > 32
       or not sessionToken or #sessionToken > 128
-      or (channel ~= 'atm' and channel ~= 'branch') then
+      or (channel ~= 'atm' and channel ~= 'branch' and channel ~= 'phone') then
     return nil, 'invalid_resolution_actor'
   end
   return {
